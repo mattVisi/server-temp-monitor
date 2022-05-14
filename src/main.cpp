@@ -13,14 +13,16 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 #include <DallasTemperature.h>
 #include <ESP_Mail_Client.h>
 
-/* ##### USER CONFIGURATION #####*/
+/* 
+##############################
 //WiFi CONFIGURATION
-const char *ssid = "";
-const char *passwd = "";  //leave empty for  WPA2 enterprise 
+const char *ssid = "";  //WiFi ssid
+const char *passwd = "";  //WiFi password. Leave empty if using WPA2 enterprise 
+const bool isWPAenterprise = false;  //Set to TRUE when using WPA2 Enterprise access to the network
 
-#define EAP_ID ""
-#define EAP_USERNAME ""
-#define EAP_PASSWORD ""
+#define EAP_ID ""   //Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
+#define EAP_USERNAME ""   //Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
+#define EAP_PASSWORD ""   //Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
 //TEMPERATURE CONFIGURATION
 const float HIGH_ALARM_TEMPERATURE = 24;    //temperature above wich the alarm sends a notify via email
 const float ALARM_RESET_THRESHOLD = 1.5;    //temperature threshold subtracted to the alarm threshold under which the alarm is reactivated
@@ -32,7 +34,11 @@ const char *email_author_name = "ESP32 - Server temp monitor";
 const char *email_author = "";
 const char *email_password = "";
 const char *email_recipient = "";
-/* ##### END CONFIGURATION #####*/
+/*
+#############################
+##### CONFIGURATION END #####
+#############################
+*/
 
 
 /*TEMPERATURE SENSOR STUFF AND FUNCTIONS*/
@@ -73,16 +79,19 @@ void setup() {
   Serial.println();
 
   Serial.print("Connecting to WiFi");
-  // WPA2 enterprise magic starts here.
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_STA);
-  esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_ID, strlen(EAP_ID));
-  esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
-  esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
-  esp_wifi_sta_wpa2_ent_enable();
-  // WPA2 enterprise magic ends here 
-  
-  WiFi.begin(ssid/*, passwd*/); //WPA2 enterprise: COMMENT passwd ARGUMENT!!!
+
+  if(isWPAenterprise) {
+    // WPA2 enterprise magic starts here.
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_STA);
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_ID, strlen(EAP_ID));
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
+    esp_wifi_sta_wpa2_ent_enable();
+    // WPA2 enterprise magic ends here
+    WiFi.begin(ssid);
+  }
+  else WiFi.begin(ssid, passwd);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
