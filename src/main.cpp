@@ -15,6 +15,9 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 
 /* 
 ##############################
+##### USER CONFIGURATION #####
+##############################
+*/
 //WiFi CONFIGURATION
 const char *ssid = "";  //WiFi ssid
 const char *passwd = "";  //WiFi password. Leave empty if using WPA2 enterprise 
