@@ -9,7 +9,7 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_wpa2.h"
-#include <OneWire.h>
+#include <OneWireNG.h>
 #include <DallasTemperature.h>
 #include <ESP_Mail_Client.h>
 
@@ -29,7 +29,7 @@ const bool isWPAenterprise = false;  //Set to TRUE when using WPA2 Enterprise ac
 //TEMPERATURE CONFIGURATION
 const float HIGH_ALARM_TEMPERATURE = 24;    //temperature above wich the alarm sends a notify via email
 const float ALARM_RESET_THRESHOLD = 1.5;    //temperature threshold subtracted to the alarm threshold under which the alarm is reactivated
-const long mesurementInterval = 60000;    //time intervall (microseconds) beetween mesurements
+const long mesurementInterval = 60000;    //time intervall (milliseconds) beetween mesurements
 //EMAIL CONFIGURATION
 #define SMTP_PORT 465
 const char *smtp_server = "smtp.gmail.com";
