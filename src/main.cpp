@@ -15,6 +15,18 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 #include <ESP_Mail_Client.h>
 
 //#define TEMP_TEST
+//#define CONFIG_ON_STARTUP
+
+#define ONE_WIRE_BUS 4
+const int ledBluePin = 18;
+const int ledGreenPin = 19;
+const int ledRedPin = 21;
+const int buttonPin = 5;
+String status = "IDLE"; // machine status IDLE/PRE_ALARM/ALARM
+#define BUTTON_TIME_CONFIG 30 // Time to hold the button pressed to enable the configuration interface
+bool isPressed = false;
+int buttonCnt = 0;
+int buttonState;
 
 /*
 #################################
@@ -45,10 +57,29 @@ int32_t mesurementInterval;  // time intervall (milliseconds) beetween mesuremen
 
 Preferences userSettings;
 
+hw_timer_t *buttonTimer = NULL;
+
+void IRAM_ATTR onTimer() 
+{
+  if (!isPressed) {
+    buttonState = digitalRead(buttonPin);
+    if (!buttonState) buttonCnt++;
+    else 
+    {
+      buttonCnt = 0;
+      return;
+    }
+    if (buttonCnt >= BUTTON_TIME_CONFIG) {
+      status = "CONFIG";
+      isPressed = !isPressed;
+    }
+  }
+}
+
+void serialConfiguration();
 void connectToWiFi();
 
 /*TEMPERATURE SENSOR STUFF AND FUNCTIONS*/
-#define ONE_WIRE_BUS 4
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 DeviceAddress rackThermometer;
@@ -65,20 +96,16 @@ void smtpCallback(SMTP_Status status);
 void sendEmail(String messageType);
 
 // RGB LED stuff
-const int ledBluePin = 18;
-const int ledGreenPin = 19;
-const int ledRedPin = 21;
 bool ledState = HIGH;
 long lastBlink = 0;
 void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin);
-
-const int buttonPin = 5;
 
 void setup()
 {
   Serial.begin(115200);
   // while(!Serial) {;}    //Wait for the serial port to open. Uncomment ONLY to debug via serial monitor, keep commented otherwise
 
+  #ifdef CONFIG_ON_STARTUP
   userSettings.begin("network");
   userSettings.putString("ssid", "");
   userSettings.putBool("isWpaEnterprise", false);
@@ -90,8 +117,8 @@ void setup()
 
   userSettings.begin("temperature");
   userSettings.putFloat("pre_alarm", 29.0);       // temperature above wich the pre alarm is triggered
-  userSettings.putFloat("alarm_threshold", 30.0); // temperature above wich the alarm sends a notify via email
-  userSettings.putFloat("reset_threshold", 1.5);  // temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
+  userSettings.putFloat("alarm_threshold", 30.5); // temperature above wich the alarm sends a notify via email
+  userSettings.putFloat("reset_threshold", 1.0);  // temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
   userSettings.putInt("mesure_interval", 6000);   // time intervall (milliseconds) beetween mesurements
   userSettings.end();
 
@@ -101,11 +128,18 @@ void setup()
   userSettings.putString("sender_address", "");
   userSettings.putString("sender_password", "");
   userSettings.putString("author_name", "ESP32 - Server temp monitor");
-  userSettings.putString("email_recipient", "");
+  userSettings.putString("recipient_1", "");
   userSettings.end();
+  #endif
+ 
+  Serial.print("Initializing timer . . . ");
+  buttonTimer = timerBegin(0, 80, true);
+  timerAttachInterrupt(buttonTimer, &onTimer, true);
+  timerAlarmWrite(buttonTimer, 100000, true);
+  timerAlarmEnable(buttonTimer);
+  Serial.println("DONE");
 
-  Serial.print("Connecting to WiFi");
-
+  Serial.print("Connecting to WiFi ");
   connectToWiFi();
 
   while (WiFi.status() != WL_CONNECTED)
@@ -113,13 +147,13 @@ void setup()
     delay(500);
     Serial.print(".");
   }
-  Serial.println();
+  Serial.println(" DONE");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   Serial.println();
 
-  Serial.println("Initializing temperature sensor...");
+  Serial.println("Initializing temperature sensor . . .");
   // initialize DallasTemperature
   sensors.begin();
   sensors.setResolution(9);
@@ -138,7 +172,7 @@ void setup()
   userSettings.end();
 
   // enable or disable the email debug via Serial port
-  smtp.debug(true);
+  smtp.debug(false);
   // Set the callback function to get the sending results
   smtp.callback(smtpCallback);
 
@@ -148,33 +182,29 @@ void setup()
   pinMode(buttonPin, INPUT_PULLUP);
 }
 
-String status = "IDLE"; // machine status IDLE/PRE_ALARM/ALARM
-
 void loop()
 {
-  if (millis() - lastMesurementTime > mesurementInterval)
+  if (millis() - lastMesurementTime > mesurementInterval && status != "CONFIG")
   {
     if (getTemperature(tempC))
     {
-      Serial.println(" Failed temp");
+      Serial.print(" Failed temp");
     }
     else
-      Serial.println(" Temperature: " + String(tempC));
+      Serial.print(" Temperature: " + String(tempC));
     lastMesurementTime = millis();
 
     Serial.print(millis());
-    Serial.print(" Alarm status: " + status);
+    Serial.println(" Alarm status: " + status);
 
     if (status == "IDLE" && tempC >= PRE_ALARM_TEMPERATURE)
     {
       status = "PRE_ALARM";
-      Serial.println(F(" #### Reached pre alarm temperature! Sending email... ####"));
       sendEmail("PRE_ALARM");
     }
     if (status == "PRE_ALARM" && tempC >= ALARM_TEMPERATURE)
     {
       status = "ALARM";
-      Serial.println(F(" #### Reached alarm temperature! Sending email... ####"));
       sendEmail("ALARM");
     }
     else if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= PRE_ALARM_TEMPERATURE - ALARM_RESET_THRESHOLD)
@@ -182,12 +212,17 @@ void loop()
       status = "IDLE";
       sendEmail("ALARM_RESET");
     }
+  } 
+  else if(status == "CONFIG")
+  {
+    serialConfiguration();
   }
-
-  if (status == "IDLE")
-    blinkLed(50, 950, ledRedPin);
-  else
-    blinkLed(50, 3000, ledGreenPin);
+  
+  if (status == "IDLE") blinkLed(50, 950, ledGreenPin);
+  else if (status == "PRE_ALARM") blinkLed(50, 950, ledRedPin);
+  else if (status == "ALARM") blinkLed(50, 250, ledRedPin);
+  else if (status == "CONFIG") blinkLed(50, 950, ledBluePin);
+  
   // restart the system every 3 days to dump the RAM and reset the clocks
   if (millis() > 259200000)
   {
@@ -305,6 +340,7 @@ void sendEmail(String messageType)
 
   if (messageType == "PRE_ALARM")
   {
+    Serial.println("Setting email headers.");
     // Set the message headers
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
@@ -317,6 +353,7 @@ void sendEmail(String messageType)
   }
   else if (messageType == "ALARM")
   {
+    Serial.println("Setting email headers.");
     // Set the message headers
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
@@ -330,6 +367,7 @@ void sendEmail(String messageType)
   }
   else if (messageType == "ALARM_RESET")
   {
+    Serial.println("Setting email headers.");
     // Set the message headers
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
@@ -343,10 +381,14 @@ void sendEmail(String messageType)
   else
     return;
 
+  Serial.println(F("Connecting..."));
   smtp.connect(&session);
   // Start sending Email and close the session
+  Serial.println(F("Sending..."));
   if (!MailClient.sendMail(&smtp, &message))
     Serial.println("Error sending Email, " + smtp.errorReason());
+  else
+    Serial.println(F("Email sent successfully"));
 }
 
 void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
@@ -367,4 +409,10 @@ void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
   }
   else
     return;
+}
+
+void serialConfiguration() 
+{
+  Serial.println(" ---- CONFIGURATION ---- ");
+  delay(3000);
 }
