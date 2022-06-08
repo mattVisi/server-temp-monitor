@@ -14,7 +14,7 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 #include <DallasTemperature.h>
 #include <ESP_Mail_Client.h>
 
-//#define TEMP_TEST
+
 //#define CONFIG_ON_STARTUP
 
 #define ONE_WIRE_BUS 4
@@ -27,6 +27,7 @@ String status = "IDLE"; // machine status IDLE/PRE_ALARM/ALARM
 bool isPressed = false;
 int buttonCnt = 0;
 int buttonState;
+#define SERIAL_BUFFER_SIZE 128
 
 /*
 #################################
@@ -38,7 +39,6 @@ int buttonState;
 // WiFi CONFIGURATION
 char *ssid;           // WiFi ssid
 char *passwd;         // WiFi password. Leave empty if using WPA2 enterprise
-bool isWPAenterprise; // Set to TRUE when using WPA2 Enterprise access to the network
 
 char *EAP_ID;       // Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
 char *EAP_USERNAME; // Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
@@ -76,6 +76,8 @@ void IRAM_ATTR onTimer()
   }
 }
 
+void printConfig();
+int getStringFromSerial(char *serialBuffer, String prompt);
 void serialConfiguration();
 void connectToWiFi();
 
@@ -103,12 +105,12 @@ void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin);
 void setup()
 {
   Serial.begin(115200);
-  // while(!Serial) {;}    //Wait for the serial port to open. Uncomment ONLY to debug via serial monitor, keep commented otherwise
+  // while(!Serial) {;}    //Waits for the serial port to open. Uncomment ONLY when debugging via serial monitor, keep commented otherwise
 
   #ifdef CONFIG_ON_STARTUP
   userSettings.begin("network");
   userSettings.putString("ssid", "");
-  userSettings.putBool("isWpaEnterprise", false);
+  userSettings.putString("isWpaEnterprise", "no");
   userSettings.putString("passwd", "");
   userSettings.putString("eap_id", "");
   userSettings.putString("eap_username", "");
@@ -116,10 +118,10 @@ void setup()
   userSettings.end();
 
   userSettings.begin("temperature");
-  userSettings.putFloat("pre_alarm", 29.0);       // temperature above wich the pre alarm is triggered
-  userSettings.putFloat("alarm_threshold", 30.5); // temperature above wich the alarm sends a notify via email
+  userSettings.putFloat("pre_alarm", 30.0);       // temperature above wich the pre alarm is triggered
+  userSettings.putFloat("alarm_threshold", 35.0); // temperature above wich the alarm sends a notify via email
   userSettings.putFloat("reset_threshold", 1.0);  // temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
-  userSettings.putInt("mesure_interval", 6000);   // time intervall (milliseconds) beetween mesurements
+  userSettings.putInt("mesure_interval", 60);   // time intervall (seconds) beetween mesurements
   userSettings.end();
 
   userSettings.begin("email");
@@ -132,26 +134,36 @@ void setup()
   userSettings.end();
   #endif
  
-  Serial.print("Initializing timer . . . ");
+  printConfig();
+
+  Serial.print("Initializing timer . . .");
   buttonTimer = timerBegin(0, 80, true);
   timerAttachInterrupt(buttonTimer, &onTimer, true);
   timerAlarmWrite(buttonTimer, 100000, true);
   timerAlarmEnable(buttonTimer);
   Serial.println("DONE");
 
-  Serial.print("Connecting to WiFi ");
+  Serial.println("Connecting to WiFi");
   connectToWiFi();
-
+  long wifiBeginMillis = millis();
   while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
+    {
     Serial.print(".");
-  }
-  Serial.println(" DONE");
-  Serial.println("WiFi connected.");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
+    if (millis() - wifiBeginMillis > 30000) break; 
+    delay(500);   
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println();
+      Serial.println("ERROR: WiFi connect timeout");
+      Serial.println("WiFi not connected. Check your network configuration.");
+    } else {
+      Serial.println();
+      Serial.println(" DONE");
+      Serial.println("WiFi connected.");
+      Serial.print("IP address: ");
+      Serial.println(WiFi.localIP());
+    }
+    Serial.println();
 
   Serial.println("Initializing temperature sensor . . .");
   // initialize DallasTemperature
@@ -168,11 +180,11 @@ void setup()
   PRE_ALARM_TEMPERATURE = userSettings.getFloat("pre_alarm");
   ALARM_TEMPERATURE = userSettings.getFloat("alarm_threshold");
   ALARM_RESET_THRESHOLD = userSettings.getFloat("reset_threshold");
-  mesurementInterval = userSettings.getInt("mesure_interval");
+  mesurementInterval = userSettings.getInt("mesure_interval")*1000;
   userSettings.end();
 
   // enable or disable the email debug via Serial port
-  smtp.debug(false);
+  smtp.debug(true);
   // Set the callback function to get the sending results
   smtp.callback(smtpCallback);
 
@@ -186,15 +198,15 @@ void loop()
 {
   if (millis() - lastMesurementTime > mesurementInterval && status != "CONFIG")
   {
+    Serial.print(millis());
     if (getTemperature(tempC))
     {
-      Serial.print(" Failed temp");
+      Serial.print(" - Failed temp");
     }
     else
-      Serial.print(" Temperature: " + String(tempC));
+      Serial.print(" - Temperature: " + String(tempC));
     lastMesurementTime = millis();
 
-    Serial.print(millis());
     Serial.println(" Alarm status: " + status);
 
     if (status == "IDLE" && tempC >= PRE_ALARM_TEMPERATURE)
@@ -231,6 +243,41 @@ void loop()
   }
 }
 
+void printConfig() {
+  Serial.println();
+  Serial.println("## Current configuration ##");
+  Serial.println("Network:");
+  userSettings.begin("network");
+  Serial.println("    ssid - " + userSettings.getString("ssid"));
+  Serial.println("    Is an enterprise login? - " + userSettings.getString("isWpaEnterprise"));
+  if (String(userSettings.getString("isWpaEnterprise")) == String("no")) {
+  Serial.println("    Password - " + userSettings.getString("passwd"));
+  } else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) {
+  Serial.println("  WPA2 enterprise login:");
+  Serial.println("    User ID - " + userSettings.getString("eap_id"));
+  Serial.println("    Username - " + userSettings.getString("eap_username"));
+  Serial.println("    Password - " + userSettings.getString("eap_password"));
+  }
+  userSettings.end();
+  Serial.println("Temperature:");
+  userSettings.begin("temperature");
+  Serial.println("    Pre alarm temperature - " + String(userSettings.getFloat("pre_alarm")) + " °C");
+  Serial.println("    Alarm temperature - " + String(userSettings.getFloat("alarm_threshold")) + " °C");
+  Serial.println("    Alarm reset threshold - " + String(userSettings.getFloat("reset_threshold")) + " °C");
+  Serial.println("    Intervall beetween mesurements - " + String(userSettings.getInt("mesure_interval")) + " seconds");
+  userSettings.end();
+  Serial.println("Email:");
+  userSettings.begin("email");
+  Serial.println("    Smtp server - " + userSettings.getString("smtp_server"));
+  Serial.println("    Port - " + String(userSettings.getUInt("smpt_port")));
+  Serial.println("    Sender address - " + userSettings.getString("sender_address"));
+  Serial.println("    SMPT password - " + userSettings.getString("sender_password"));
+  Serial.println("    Author name - " + userSettings.getString("author_name"));
+  Serial.println("    Email recipient - " + userSettings.getString("recipient_1"));
+  userSettings.end();
+  Serial.println();
+}
+
 void connectToWiFi()
 {
   char ssidBuff[32];
@@ -239,20 +286,19 @@ void connectToWiFi()
   char eapUsernameBuff[50];
   char eapPasswordBuff[50];
 
-  if (!userSettings.getBool("isWpaEnterprise"))
+  userSettings.begin("network");
+  if (userSettings.getString("isWpaEnterprise") == String("no"))
   {
-    userSettings.begin("network");
+    Serial.println("Not using wpa enterprise.");
     userSettings.getString("ssid").toCharArray(ssidBuff, 32);
     ssid = ssidBuff;
     userSettings.getString("passwd").toCharArray(passwdBuff, 50);
     passwd = passwdBuff;
-    userSettings.end();
-
     WiFi.begin(ssid, passwd);
   }
   else
   {
-    userSettings.begin("network");
+    Serial.println("Using wpa enterprise.");
     userSettings.getString("ssid").toCharArray(ssidBuff, 32);
     ssid = ssidBuff;
     userSettings.getString("eap_id").toCharArray(eapIDBuff, 50);
@@ -261,7 +307,6 @@ void connectToWiFi()
     EAP_USERNAME = eapUsernameBuff;
     userSettings.getString("eap_password").toCharArray(eapPasswordBuff, 50);
     EAP_PASSWORD = eapPasswordBuff;
-    userSettings.end();
 
     // WPA2 enterprise magic starts here.
     WiFi.disconnect(true);
@@ -273,6 +318,7 @@ void connectToWiFi()
     // WPA2 enterprise magic ends here
     WiFi.begin(ssid);
   }
+  userSettings.end();
 }
 
 int getTemperature(float &tempVar)
@@ -411,8 +457,192 @@ void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
     return;
 }
 
+int getStringFromSerial(char *serialBuffer, String prompt)
+{
+  int i = 0;
+  int incomingByte = 0; // for incoming serial data
+
+  Serial.print(prompt);
+  while (incomingByte != 13 && i <= SERIAL_BUFFER_SIZE)
+  {
+    if (Serial.available()  > 0)
+    {
+      incomingByte = Serial.read(); // read the incoming byte:
+      if (incomingByte == 13) {
+        break;  // exits the function if CR is received
+      } else if (incomingByte == 127) {
+        if (i>0) i--;
+        else Serial.write(32);
+        serialBuffer[i] = 0;
+      } else {
+        serialBuffer[i] = incomingByte; // saves the incoming byte to the buffer
+        i++;
+      }
+      Serial.write(incomingByte); // print the received byte
+      if (i == SERIAL_BUFFER_SIZE+1)
+      {
+        i--;
+        serialBuffer[i] = 0;
+        Serial.write(127);
+        Serial.write(7);
+      }
+    }
+  }
+  serialBuffer[i] = 0;
+  return(i);
+}
+
 void serialConfiguration() 
 {
+  char buf[SERIAL_BUFFER_SIZE+1];
+  float floatBuf;
+  int intBuf;
+  Serial.println();
+  Serial.println();
   Serial.println(" ---- CONFIGURATION ---- ");
-  delay(3000);
+  Serial.println();
+  Serial.println("You can digit using your keyboard. Press <ENTER> to confirm the inserted value. If <ENTER> is pressed the previously configured value will remain in memory.");
+  
+  Serial.println();
+  Serial.println("Network configuration:");
+  userSettings.begin("network");
+  getStringFromSerial(buf, "  SSID (" + userSettings.getString("ssid") + "): ");
+  if(String(buf) != String("")) userSettings.putString("ssid", String(buf));
+  Serial.println();
+
+  while(true) {
+    getStringFromSerial(buf, "  Are you using enterprise login? yes/no (" + userSettings.getString("isWpaEnterprise") + "): ");
+    if(String(buf) == String("")) break;
+    else if (String(buf) == String("yes") || String(buf) == String("no")) {
+      userSettings.putString("isWpaEnterprise", String(buf));
+      Serial.println();
+      break;
+    }
+    Serial.println();
+  }
+
+  if (String(userSettings.getString("isWpaEnterprise")) == String("no")) {
+    getStringFromSerial(buf, "  Password (" + userSettings.getString("passwd") + "): ");
+    if(String(buf) != String("")) userSettings.putString("passwd", String(buf));
+    Serial.println();
+  } else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) {
+    getStringFromSerial(buf, "  User ID (" + userSettings.getString("eap_id") + "): ");
+    if(String(buf) != String("")) userSettings.putString("eap_id", String(buf));
+    Serial.println();
+    getStringFromSerial(buf, "  Username (" + userSettings.getString("eap_username") + "): ");
+    if(String(buf) != String("")) userSettings.putString("eap_username", String(buf));
+    Serial.println();
+    getStringFromSerial(buf, "  Password (" + userSettings.getString("eap_password") + "): ");
+    if(String(buf) != String("")) userSettings.putString("eap_password", String(buf));
+    Serial.println();
+  }
+  userSettings.end();
+
+  Serial.println();
+  Serial.println("Temperature sensor configuration");
+  Serial.println("Note: Temperatures cannot be set at 0.00 °C");
+  
+  userSettings.begin("temperature");
+  while(true) {
+    do
+    {
+      getStringFromSerial(buf, "  Pre alarm temperature (" + String(userSettings.getFloat("pre_alarm")) + "°C ): ");
+      if (String(buf).toFloat() != float(0.0) /*This basically means isNaN(buf)*/ && String(buf) != String(""))
+      {
+        userSettings.putFloat("pre_alarm", String(buf).toFloat());
+      }
+      else if (String(buf) == String("")) break;
+    } while (String(buf).toFloat() == float(0.0));
+    
+    do
+    {
+      Serial.println();
+      getStringFromSerial(buf, "  Alarm temperature (" + String(userSettings.getFloat("alarm_threshold")) + "°C ): ");
+      if (String(buf).toFloat() != float(0.0) && String(buf) != String(""))
+      {
+        userSettings.putFloat("alarm_threshold", String(buf).toFloat());
+      }
+      else if (String(buf) == String("")) break;
+    } while (String(buf).toFloat() == float(0.0));
+
+    do
+    {
+      Serial.println();
+      getStringFromSerial(buf, "  Alarm reset threshold (" + String(userSettings.getFloat("reset_threshold")) + "°C ): ");
+      if (String(buf).toFloat() != float(0.0) && String(buf) != String(""))
+        userSettings.putFloat("reset_threshold", String(buf).toFloat());
+      else if (String(buf) == String("")) break;
+    } while (String(buf).toFloat() == float(0.0));
+
+    do
+    {
+      Serial.println();
+      getStringFromSerial(buf, "  Intervall between mesurements (" + String(userSettings.getInt("mesure_interval")) + " seconds): ");
+      sscanf(buf, "%04d", &intBuf);
+      if (intBuf != 0 && String(buf) != String(""))
+      {
+        userSettings.putInt("mesure_interval", intBuf);
+      }
+      else if (String(buf) == String("")) break;
+    } while (String(buf).toInt() == long(0));
+    Serial.println();
+
+    if(userSettings.getFloat("pre_alarm") < userSettings.getFloat("alarm_threshold")) break;
+    else {
+      Serial.println("  ERROR! PRE-ALARM TEMPERATURE CANNOT BE GRATER THAN THE ALARM TEMPERATURE!");
+      Serial.println();
+      Serial.println("  Retry.");
+    }
+  }
+  
+  userSettings.end();
+
+  Serial.println("Email configuration");
+  userSettings.begin("email");
+  getStringFromSerial(buf, "  SMTP server address (" + userSettings.getString("smtp_server") + "): ");
+  if(String(buf) != String("")) userSettings.putString("smtp_server", String(buf));
+
+  do {
+    Serial.println();
+    getStringFromSerial(buf, "  SMTP port (" + String(userSettings.getUInt("smpt_port")) + "): ");
+    sscanf(buf, "%04u", &intBuf);
+    if(intBuf != 0 && String(buf) != String("")) {
+      userSettings.putUInt("smpt_port", intBuf);
+    }
+    else if (String(buf) == String("")) break;
+  } while(String(buf).toInt() == long(0));
+
+  Serial.println();
+  getStringFromSerial(buf, "  Sender email address (" + userSettings.getString("sender_address") + "): ");
+  if(String(buf) != String("")) userSettings.putString("sender_address", String(buf));
+  Serial.println();
+  getStringFromSerial(buf, "  Sender password (" + userSettings.getString("sender_password") + "): ");
+  if(String(buf) != String("")) userSettings.putString("sender_password", String(buf));
+  Serial.println();
+  getStringFromSerial(buf, "  Sender name (" + userSettings.getString("author_name") + "): ");
+  if(String(buf) != String("")) userSettings.putString("author_name", String(buf));
+  Serial.println();
+  getStringFromSerial(buf, "  Recipient email address (" + userSettings.getString("recipient_1") + "): ");
+  if(String(buf) != String("")) userSettings.putString("recipient_1", String(buf));
+  
+  userSettings.end();
+  Serial.println();
+  Serial.println();
+  delay(1500);
+  Serial.println("Configuration completed.");
+  delay(1000);
+  
+  printConfig();
+  while(true) {
+    Serial.println();
+    getStringFromSerial(buf, "Confirm? yes/no: ");
+    if (String(buf) == String("yes") || String(buf) == String("no")) break;
+  }
+  Serial.println();
+  if (String(buf) == String("yes")) {
+    delay(500);
+    Serial.println("Restarting system ...");
+    delay(500);
+    ESP.restart();
+  } else return;
 }
