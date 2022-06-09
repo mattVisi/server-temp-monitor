@@ -24,6 +24,8 @@ const int ledGreenPin = 19;
 const int ledRedPin = 21;
 const int buttonPin = 5;
 String status = "IDLE"; // machine status IDLE/PRE_ALARM/ALARM
+int tempReadingErrotCnt = 0; // counts how many consecutive temperature reading errors happend
+unsigned long lastFailureEmailTime = 14400000;
 #define BUTTON_TIME_CONFIG 30 // Time to hold the button pressed to enable the configuration interface
 bool isPressed = false;
 int buttonCnt = 0;
@@ -217,13 +219,25 @@ void loop()
     Serial.print(millis());
     if (getTemperature(tempC))
     {
+      tempReadingErrotCnt++;
       Serial.print(" - Failed temp");
     }
-    else
+    else if (status == "SENSOR_FAILURE") {
+      status = "IDLE";
+      tempReadingErrotCnt = 0;
       Serial.print(" - Temperature: " + String(tempC));
+    }
+    else {
+      tempReadingErrotCnt = 0;
+      Serial.print(" - Temperature: " + String(tempC));
+    }
     lastMesurementTime = millis();
 
-    Serial.println(" Alarm status: " + status);
+    if (tempReadingErrotCnt >= 5) status = "SENSOR_FAILURE";
+
+    Serial.print(" | Fail count: " + String(tempReadingErrotCnt));
+
+    Serial.println(" | System status: " + status);
 
     if (status == "IDLE" && tempC >= PRE_ALARM_TEMPERATURE)
     {
@@ -240,23 +254,21 @@ void loop()
       status = "IDLE";
       sendEmail("ALARM_RESET");
     }
-  } 
+  }
   else if(status == "CONFIG")
   {
     serialConfiguration();
+  }
+  else if (status == "SENSOR_FAILURE" && millis()-lastFailureEmailTime>14400000) // if there is a failure in the sensor sends an email every four hours
+  {
+    sendEmail("SENSOR_FAILURE");
+    lastFailureEmailTime = millis();
   }
   
   if (status == "IDLE") blinkLed(50, 950, ledGreenPin);
   else if (status == "PRE_ALARM") blinkLed(50, 950, ledRedPin);
   else if (status == "ALARM") blinkLed(50, 250, ledRedPin);
   else if (status == "CONFIG") blinkLed(50, 950, ledBluePin);
-  
-  // restart the system every 3 days to dump the RAM and reset the clocks
-  if (millis() > 259200000)
-  {
-    Serial.println(F("Restarting system . . ."));
-    ESP.restart();
-  }
 }
 
 int getStringFromSerial(char *serialBuffer, String prompt, int mode)
@@ -463,7 +475,7 @@ void sendEmail(String messageType)
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
     message.sender.email = userSettings.getString("sender_address");
-    message.subject = "Temperatura server - Soglia di attenzione superata";
+    message.subject = "Temperatura sala server - Soglia di attenzione superata";
     message.addRecipient("Recipient 1", userSettings.getString("recipient_1"));
     userSettings.end();
     // Set the message content
@@ -476,7 +488,7 @@ void sendEmail(String messageType)
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
     message.sender.email = userSettings.getString("sender_address");
-    message.subject = "Allarme temperatura server";
+    message.subject = "Temperatura sala server - ALLARME";
     message.addRecipient("Recipient 1", userSettings.getString("recipient_1"));
 
     userSettings.end();
@@ -490,11 +502,24 @@ void sendEmail(String messageType)
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
     message.sender.email = userSettings.getString("sender_address");
-    message.subject = "Allarme rientrato";
+    message.subject = "Temperatura sala server - Allarme rientrato";
     message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
     userSettings.end();
     // Set the message content
     message.text.content = "La temperatura è tornata sotto la soglia di attenzione. L'ultima misurazione è stata di " + String(tempC) + " °C.";
+  }
+  else if (messageType == "SENSOR_FAILURE")
+  {
+    // Set the message headers
+    userSettings.begin("email");
+    message.sender.name = userSettings.getString("author_name");
+    message.sender.email = userSettings.getString("sender_address");
+    message.subject = "Server Temp Monitor - SENSORE GUASTO";
+    message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
+    userSettings.end();
+    // Set the message content
+    message.text.content = "Le ultime 5 letture della temperatura non hanno avuto successo. \nLa temperatura della sala server non è sotto controllo. \n\n Ogni cinque letture fallite verrà inviata questa email.";
+    tempReadingErrotCnt = 0;
   }
   else if (messageType == "IM_ALIVE")
   {
@@ -502,7 +527,7 @@ void sendEmail(String messageType)
     userSettings.begin("email");
     message.sender.name = userSettings.getString("author_name");
     message.sender.email = userSettings.getString("sender_address");
-    message.subject = "I'm alive!";
+    message.subject = "Temperatura sala server - I'm alive!";
     message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
     userSettings.end();
     // Set the message content
