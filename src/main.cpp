@@ -15,6 +15,7 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 #include <ESP_Mail_Client.h>
 
 
+//#define DEBUG
 //#define CONFIG_ON_STARTUP
 
 #define ONE_WIRE_BUS 4
@@ -28,6 +29,8 @@ bool isPressed = false;
 int buttonCnt = 0;
 int buttonState;
 #define SERIAL_BUFFER_SIZE 128
+#define MODE_CLEAR_TEXT 0
+#define MODE_PASSWORD 1
 
 /*
 #################################
@@ -76,8 +79,9 @@ void IRAM_ATTR onTimer()
   }
 }
 
-void printConfig();
-int getStringFromSerial(char *serialBuffer, String prompt);
+void printConfig(int mode);
+int getStringFromSerial(char *serialBuffer, String prompt, int mode);
+String strToAst(String inputString);  // Converts input string as a string of asterisks, leaving clear only the first and the last charaters
 void serialConfiguration();
 void connectToWiFi();
 
@@ -105,7 +109,8 @@ void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin);
 void setup()
 {
   Serial.begin(115200);
-  // while(!Serial) {;}    //Waits for the serial port to open. Uncomment ONLY when debugging via serial monitor, keep commented otherwise
+  delay(2000);
+  // while(!Serial) {;}    //Waits for the serial port to open. uSE ONLY when debugging via serial port
 
   #ifdef CONFIG_ON_STARTUP
   userSettings.begin("network");
@@ -131,10 +136,26 @@ void setup()
   userSettings.putString("sender_password", "");
   userSettings.putString("author_name", "ESP32 - Server temp monitor");
   userSettings.putString("recipient_1", "");
+  userSettings.putString("imAliveMessage", "no");
+  userSettings.putInt("imAlive_intrvl", 30);  // time intervall (days) beetween "Im alive" emails
   userSettings.end();
   #endif
- 
-  printConfig();
+  
+  #ifdef DEBUG
+  printConfig(MODE_CLEAR_TEXT);
+  #endif
+  #ifndef DEBUG
+  printConfig(MODE_PASSWORD);
+  #endif
+
+  pinMode(ledBluePin, OUTPUT);
+  pinMode(ledRedPin, OUTPUT);
+  pinMode(ledGreenPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  digitalWrite(ledBluePin, LOW);
+  digitalWrite(ledRedPin, LOW);
+  digitalWrite(ledGreenPin, LOW);
 
   Serial.print("Initializing timer . . .");
   buttonTimer = timerBegin(0, 80, true);
@@ -187,11 +208,6 @@ void setup()
   smtp.debug(true);
   // Set the callback function to get the sending results
   smtp.callback(smtpCallback);
-
-  pinMode(ledBluePin, OUTPUT);
-  pinMode(ledRedPin, OUTPUT);
-  pinMode(ledGreenPin, OUTPUT);
-  pinMode(buttonPin, INPUT_PULLUP);
 }
 
 void loop()
@@ -243,7 +259,54 @@ void loop()
   }
 }
 
-void printConfig() {
+int getStringFromSerial(char *serialBuffer, String prompt, int mode)
+{
+  int i = 0;
+  int incomingByte = 0; // for incoming serial data
+
+  Serial.print(prompt);
+  while (incomingByte != 13 && i <= SERIAL_BUFFER_SIZE)
+  {
+    if (Serial.available()  > 0)
+    {
+      incomingByte = Serial.read(); // read the incoming byte:
+      if (incomingByte == 13) {
+        break;  // exits the function if CR is received
+      } else if (incomingByte == 127) {
+        if (i>0) i--;
+        else Serial.write(' ');
+        Serial.write(incomingByte);
+        serialBuffer[i] = 0;
+      } else {
+        serialBuffer[i] = incomingByte; // saves the incoming byte to the buffer
+        i++;
+      }
+      if (mode == 0 && incomingByte != 127) Serial.write(incomingByte); // print the received byte
+      else if (mode == 1 && incomingByte != 127)  {
+        Serial.write(incomingByte);
+        delay(300);
+        Serial.write(127);
+        Serial.write('*');
+      }
+      if (i == SERIAL_BUFFER_SIZE+1)
+      {
+        i--;
+        serialBuffer[i] = 0;
+        Serial.write(127);
+        Serial.write(7);
+      }
+    }
+  }
+  serialBuffer[i] = 0;
+  return(i);
+}
+
+String strToAst(String inputString) {
+  for (int i = 1; i<(inputString.length()-1); i++) inputString.setCharAt(i, '*');
+  return inputString;
+}
+
+void printConfig(int mode) {
   Serial.println();
   Serial.println("## Current configuration ##");
   Serial.println("Network:");
@@ -251,12 +314,18 @@ void printConfig() {
   Serial.println("    ssid - " + userSettings.getString("ssid"));
   Serial.println("    Is an enterprise login? - " + userSettings.getString("isWpaEnterprise"));
   if (String(userSettings.getString("isWpaEnterprise")) == String("no")) {
-  Serial.println("    Password - " + userSettings.getString("passwd"));
+    Serial.print("    Password - ");
+    if (mode == 0) Serial.print(userSettings.getString("passwd"));
+    else if (mode == 1) Serial.print(strToAst(userSettings.getString("passwd")));
+    Serial.println();
   } else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) {
   Serial.println("  WPA2 enterprise login:");
   Serial.println("    User ID - " + userSettings.getString("eap_id"));
   Serial.println("    Username - " + userSettings.getString("eap_username"));
-  Serial.println("    Password - " + userSettings.getString("eap_password"));
+  Serial.print("    Password - ");
+    if (mode == 0) Serial.print(userSettings.getString("eap_password"));
+    else if (mode == 1) Serial.print(strToAst(userSettings.getString("eap_password")));
+    Serial.println();
   }
   userSettings.end();
   Serial.println("Temperature:");
@@ -271,7 +340,10 @@ void printConfig() {
   Serial.println("    Smtp server - " + userSettings.getString("smtp_server"));
   Serial.println("    Port - " + String(userSettings.getUInt("smpt_port")));
   Serial.println("    Sender address - " + userSettings.getString("sender_address"));
-  Serial.println("    SMPT password - " + userSettings.getString("sender_password"));
+  Serial.print("    SMTP password - ");
+    if (mode == 0) Serial.print(userSettings.getString("sender_password"));
+    else if (mode == 1) Serial.print(strToAst(userSettings.getString("sender_password")));
+    Serial.println();
   Serial.println("    Author name - " + userSettings.getString("author_name"));
   Serial.println("    Email recipient - " + userSettings.getString("recipient_1"));
   userSettings.end();
@@ -424,6 +496,18 @@ void sendEmail(String messageType)
     // Set the message content
     message.text.content = "La temperatura è tornata sotto la soglia di attenzione. L'ultima misurazione è stata di " + String(tempC) + " °C.";
   }
+  else if (messageType == "IM_ALIVE")
+  {
+    // Set the message headers
+    userSettings.begin("email");
+    message.sender.name = userSettings.getString("author_name");
+    message.sender.email = userSettings.getString("sender_address");
+    message.subject = "I'm alive!";
+    message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
+    userSettings.end();
+    // Set the message content
+    message.text.content = "Sono vivo e sto controllando la sala server. L'ultima misurazione è stata di " + String(tempC) + " °C." + "Sono acceso da " + String(millis()/1000) + " secondi";
+  }
   else
     return;
 
@@ -457,41 +541,6 @@ void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
     return;
 }
 
-int getStringFromSerial(char *serialBuffer, String prompt)
-{
-  int i = 0;
-  int incomingByte = 0; // for incoming serial data
-
-  Serial.print(prompt);
-  while (incomingByte != 13 && i <= SERIAL_BUFFER_SIZE)
-  {
-    if (Serial.available()  > 0)
-    {
-      incomingByte = Serial.read(); // read the incoming byte:
-      if (incomingByte == 13) {
-        break;  // exits the function if CR is received
-      } else if (incomingByte == 127) {
-        if (i>0) i--;
-        else Serial.write(32);
-        serialBuffer[i] = 0;
-      } else {
-        serialBuffer[i] = incomingByte; // saves the incoming byte to the buffer
-        i++;
-      }
-      Serial.write(incomingByte); // print the received byte
-      if (i == SERIAL_BUFFER_SIZE+1)
-      {
-        i--;
-        serialBuffer[i] = 0;
-        Serial.write(127);
-        Serial.write(7);
-      }
-    }
-  }
-  serialBuffer[i] = 0;
-  return(i);
-}
-
 void serialConfiguration() 
 {
   char buf[SERIAL_BUFFER_SIZE+1];
@@ -506,33 +555,32 @@ void serialConfiguration()
   Serial.println();
   Serial.println("Network configuration:");
   userSettings.begin("network");
-  getStringFromSerial(buf, "  SSID (" + userSettings.getString("ssid") + "): ");
+  getStringFromSerial(buf, "  SSID (" + userSettings.getString("ssid") + "): ", MODE_CLEAR_TEXT);
   if(String(buf) != String("")) userSettings.putString("ssid", String(buf));
   Serial.println();
 
   while(true) {
-    getStringFromSerial(buf, "  Are you using enterprise login? yes/no (" + userSettings.getString("isWpaEnterprise") + "): ");
+    getStringFromSerial(buf, "  Are you using enterprise login? yes/no (" + userSettings.getString("isWpaEnterprise") + "): ", MODE_CLEAR_TEXT);
     if(String(buf) == String("")) break;
     else if (String(buf) == String("yes") || String(buf) == String("no")) {
       userSettings.putString("isWpaEnterprise", String(buf));
       Serial.println();
       break;
     }
-    Serial.println();
   }
-
+  Serial.println();
   if (String(userSettings.getString("isWpaEnterprise")) == String("no")) {
-    getStringFromSerial(buf, "  Password (" + userSettings.getString("passwd") + "): ");
+    getStringFromSerial(buf, "  Password (" + strToAst(userSettings.getString("passwd")) + "): ", MODE_PASSWORD);
     if(String(buf) != String("")) userSettings.putString("passwd", String(buf));
     Serial.println();
   } else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) {
-    getStringFromSerial(buf, "  User ID (" + userSettings.getString("eap_id") + "): ");
+    getStringFromSerial(buf, "  User ID (" + userSettings.getString("eap_id") + "): ", MODE_CLEAR_TEXT);
     if(String(buf) != String("")) userSettings.putString("eap_id", String(buf));
     Serial.println();
-    getStringFromSerial(buf, "  Username (" + userSettings.getString("eap_username") + "): ");
+    getStringFromSerial(buf, "  Username (" + userSettings.getString("eap_username") + "): ", MODE_CLEAR_TEXT);
     if(String(buf) != String("")) userSettings.putString("eap_username", String(buf));
     Serial.println();
-    getStringFromSerial(buf, "  Password (" + userSettings.getString("eap_password") + "): ");
+    getStringFromSerial(buf, "  Password (" + strToAst(userSettings.getString("eap_password")) + "): ", MODE_PASSWORD);
     if(String(buf) != String("")) userSettings.putString("eap_password", String(buf));
     Serial.println();
   }
@@ -546,7 +594,7 @@ void serialConfiguration()
   while(true) {
     do
     {
-      getStringFromSerial(buf, "  Pre alarm temperature (" + String(userSettings.getFloat("pre_alarm")) + "°C ): ");
+      getStringFromSerial(buf, "  Pre alarm temperature (" + String(userSettings.getFloat("pre_alarm")) + "°C ): ", MODE_CLEAR_TEXT);
       if (String(buf).toFloat() != float(0.0) /*This basically means isNaN(buf)*/ && String(buf) != String(""))
       {
         userSettings.putFloat("pre_alarm", String(buf).toFloat());
@@ -557,7 +605,7 @@ void serialConfiguration()
     do
     {
       Serial.println();
-      getStringFromSerial(buf, "  Alarm temperature (" + String(userSettings.getFloat("alarm_threshold")) + "°C ): ");
+      getStringFromSerial(buf, "  Alarm temperature (" + String(userSettings.getFloat("alarm_threshold")) + "°C ): ", MODE_CLEAR_TEXT);
       if (String(buf).toFloat() != float(0.0) && String(buf) != String(""))
       {
         userSettings.putFloat("alarm_threshold", String(buf).toFloat());
@@ -568,7 +616,7 @@ void serialConfiguration()
     do
     {
       Serial.println();
-      getStringFromSerial(buf, "  Alarm reset threshold (" + String(userSettings.getFloat("reset_threshold")) + "°C ): ");
+      getStringFromSerial(buf, "  Alarm reset threshold (" + String(userSettings.getFloat("reset_threshold")) + "°C ): ", MODE_CLEAR_TEXT);
       if (String(buf).toFloat() != float(0.0) && String(buf) != String(""))
         userSettings.putFloat("reset_threshold", String(buf).toFloat());
       else if (String(buf) == String("")) break;
@@ -577,7 +625,7 @@ void serialConfiguration()
     do
     {
       Serial.println();
-      getStringFromSerial(buf, "  Intervall between mesurements (" + String(userSettings.getInt("mesure_interval")) + " seconds): ");
+      getStringFromSerial(buf, "  Intervall between mesurements (" + String(userSettings.getInt("mesure_interval")) + " seconds): ", MODE_CLEAR_TEXT);
       sscanf(buf, "%04d", &intBuf);
       if (intBuf != 0 && String(buf) != String(""))
       {
@@ -599,12 +647,12 @@ void serialConfiguration()
 
   Serial.println("Email configuration");
   userSettings.begin("email");
-  getStringFromSerial(buf, "  SMTP server address (" + userSettings.getString("smtp_server") + "): ");
+  getStringFromSerial(buf, "  SMTP server address (" + userSettings.getString("smtp_server") + "): ", MODE_CLEAR_TEXT);
   if(String(buf) != String("")) userSettings.putString("smtp_server", String(buf));
 
   do {
     Serial.println();
-    getStringFromSerial(buf, "  SMTP port (" + String(userSettings.getUInt("smpt_port")) + "): ");
+    getStringFromSerial(buf, "  SMTP port (" + String(userSettings.getUInt("smpt_port")) + "): ", MODE_CLEAR_TEXT);
     sscanf(buf, "%04u", &intBuf);
     if(intBuf != 0 && String(buf) != String("")) {
       userSettings.putUInt("smpt_port", intBuf);
@@ -613,16 +661,16 @@ void serialConfiguration()
   } while(String(buf).toInt() == long(0));
 
   Serial.println();
-  getStringFromSerial(buf, "  Sender email address (" + userSettings.getString("sender_address") + "): ");
+  getStringFromSerial(buf, "  Sender email address (" + userSettings.getString("sender_address") + "): ", MODE_CLEAR_TEXT);
   if(String(buf) != String("")) userSettings.putString("sender_address", String(buf));
   Serial.println();
-  getStringFromSerial(buf, "  Sender password (" + userSettings.getString("sender_password") + "): ");
+  getStringFromSerial(buf, "  Sender password (" + strToAst((userSettings.getString("sender_password"))) + "): ", MODE_PASSWORD);
   if(String(buf) != String("")) userSettings.putString("sender_password", String(buf));
   Serial.println();
-  getStringFromSerial(buf, "  Sender name (" + userSettings.getString("author_name") + "): ");
+  getStringFromSerial(buf, "  Sender name (" + userSettings.getString("author_name") + "): ", MODE_CLEAR_TEXT);
   if(String(buf) != String("")) userSettings.putString("author_name", String(buf));
   Serial.println();
-  getStringFromSerial(buf, "  Recipient email address (" + userSettings.getString("recipient_1") + "): ");
+  getStringFromSerial(buf, "  Recipient email address (" + userSettings.getString("recipient_1") + "): ", MODE_CLEAR_TEXT);
   if(String(buf) != String("")) userSettings.putString("recipient_1", String(buf));
   
   userSettings.end();
@@ -632,10 +680,16 @@ void serialConfiguration()
   Serial.println("Configuration completed.");
   delay(1000);
   
-  printConfig();
+  #ifdef DEBUG
+  printConfig(MODE_CLEAR_TEXT);
+  #endif
+  #ifndef DEBUG
+  printConfig(MODE_PASSWORD);
+  #endif
+
   while(true) {
     Serial.println();
-    getStringFromSerial(buf, "Confirm? yes/no: ");
+    getStringFromSerial(buf, "Confirm? yes/no: ", MODE_CLEAR_TEXT);
     if (String(buf) == String("yes") || String(buf) == String("no")) break;
   }
   Serial.println();
