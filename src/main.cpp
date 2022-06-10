@@ -16,6 +16,7 @@ Support for both WPA2 Personal and WPA2 Enterprise WiFi security
 
 
 //#define DEBUG
+//#define NO_MAIL
 //#define CONFIG_ON_STARTUP
 
 #define ONE_WIRE_BUS 4
@@ -23,9 +24,11 @@ const int ledBluePin = 18;
 const int ledGreenPin = 19;
 const int ledRedPin = 21;
 const int buttonPin = 5;
-String status = "IDLE"; // machine status IDLE/PRE_ALARM/ALARM
-int tempReadingErrotCnt = 0; // counts how many consecutive temperature reading errors happend
-unsigned long lastFailureEmailTime = 14400000;
+String status = "IDLE"; // System status IDLE/PRE_ALARM/ALARM/SENSOR_FAILURE/CONFIG
+String previousStatus = "IDLE";  // System status at the end of the previous loop
+int tempReadingErrotCnt = 0; // Counts how many consecutive temperature reading errors happend
+unsigned long lastFailureEmailTime;   // Last time (millis) a failure email was sent
+unsigned long lastAlarmEmailTime;   // Last time (millis) an alarm email was sent
 #define BUTTON_TIME_CONFIG 30 // Time to hold the button pressed to enable the configuration interface
 bool isPressed = false;
 int buttonCnt = 0;
@@ -50,10 +53,13 @@ char *EAP_USERNAME; // Enterprise WiFi credentials. Leave empty when not using W
 char *EAP_PASSWORD; // Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
 
 // TEMPERATURE CONFIGURATION
-float PRE_ALARM_TEMPERATURE; // temperature above wich the pre alarm is triggered
-float ALARM_TEMPERATURE;     // temperature above wich the alarm sends a notify via email
-float ALARM_RESET_THRESHOLD; // temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
-int32_t mesurementInterval;  // time intervall (milliseconds) beetween mesurements
+float PRE_ALARM_TEMPERATURE; // Temperature above wich the pre alarm is triggered
+float ALARM_TEMPERATURE;     // Temperature above wich the alarm sends a notify via email
+float ALARM_RESET_THRESHOLD; // Temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
+unsigned long mesurementInterval;  // Time intervall (milliseconds) beetween mesurements
+unsigned long alarmEmailInterval;  // Time intervall (milliseconds) beetween each alarm emails
+bool firstTempAlarm = true;   // Flag which is true until a temperature alarm is triggered
+bool firstSensorAlarm = true;   // Flag which is true until any sensor failure alarm is triggered
 /*
 #############################
 ##### CONFIGURATION END #####
@@ -82,6 +88,7 @@ void IRAM_ATTR onTimer()
 }
 
 void printConfig(int mode);
+unsigned long TimeDiff(unsigned long lastTime, unsigned long currTime);
 int getStringFromSerial(char *serialBuffer, String prompt, int mode);
 String strToAst(String inputString);  // Converts input string as a string of asterisks, leaving clear only the first and the last charaters
 void serialConfiguration();
@@ -92,7 +99,7 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 DeviceAddress rackThermometer;
 float tempC;
-long lastMesurementTime = 0;
+unsigned long lastMesurementTime = 0;
 int getTemperature(float &tempVar);
 
 /*EMAIL STUFF*/
@@ -116,26 +123,27 @@ void setup()
 
   #ifdef CONFIG_ON_STARTUP
   userSettings.begin("network");
-  userSettings.putString("ssid", "");
+  userSettings.putString("ssid", "your_ssid");
   userSettings.putString("isWpaEnterprise", "no");
-  userSettings.putString("passwd", "");
-  userSettings.putString("eap_id", "");
-  userSettings.putString("eap_username", "");
-  userSettings.putString("eap_password", "");
+  userSettings.putString("passwd", "password");
+  userSettings.putString("eap_id", "id");
+  userSettings.putString("eap_username", "user");
+  userSettings.putString("eap_password", "password");
   userSettings.end();
 
-  userSettings.begin("temperature");
+  userSettings.begin("alarms");
   userSettings.putFloat("pre_alarm", 30.0);       // temperature above wich the pre alarm is triggered
   userSettings.putFloat("alarm_threshold", 35.0); // temperature above wich the alarm sends a notify via email
   userSettings.putFloat("reset_threshold", 1.0);  // temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
   userSettings.putInt("mesure_interval", 60);   // time intervall (seconds) beetween mesurements
+  userSettings.putInt("alarm_interval", 10);   // time intervall (minutes) beetween alarm emails
   userSettings.end();
 
   userSettings.begin("email");
-  userSettings.putString("smtp_server", "");
+  userSettings.putString("smtp_server", "smtp.email.something");
   userSettings.putUInt("smpt_port", 465);
-  userSettings.putString("sender_address", "");
-  userSettings.putString("sender_password", "");
+  userSettings.putString("sender_address", "you@email.something");
+  userSettings.putString("sender_password", "password");
   userSettings.putString("author_name", "ESP32 - Server temp monitor");
   userSettings.putString("recipient_1", "");
   userSettings.putString("imAliveMessage", "no");
@@ -198,77 +206,138 @@ void setup()
   Serial.println(" devices.");
   Serial.println();
 
-  // TEMPERATURE CONFIGURATION
-  userSettings.begin("temperature");
+  // ALARMS CONFIGURATION
+  userSettings.begin("alarms");
   PRE_ALARM_TEMPERATURE = userSettings.getFloat("pre_alarm");
   ALARM_TEMPERATURE = userSettings.getFloat("alarm_threshold");
   ALARM_RESET_THRESHOLD = userSettings.getFloat("reset_threshold");
   mesurementInterval = userSettings.getInt("mesure_interval")*1000;
+  alarmEmailInterval = userSettings.getInt("alarm_interval")*60000;
   userSettings.end();
 
+  #ifdef DEBUG
+  Serial.println();
+  Serial.println(PRE_ALARM_TEMPERATURE);
+  Serial.println(ALARM_TEMPERATURE);
+  Serial.println(ALARM_RESET_THRESHOLD);
+  Serial.println(mesurementInterval);
+  Serial.println(alarmEmailInterval);
+  Serial.println();
+  #endif
+
   // enable or disable the email debug via Serial port
-  smtp.debug(true);
+  smtp.debug(1);
   // Set the callback function to get the sending results
   smtp.callback(smtpCallback);
 }
 
 void loop()
 {
-  if (millis() - lastMesurementTime > mesurementInterval && status != "CONFIG")
+  if (TimeDiff(lastMesurementTime, millis()) > mesurementInterval && status != "CONFIG")
   {
     Serial.print(millis());
+    #ifdef DEBUG
+    Serial.print(" | Last mesure time diff ");
+    Serial.print(TimeDiff(lastMesurementTime, millis()));
+    #endif
+
+    // Getting temperature and counting reading errors
     if (getTemperature(tempC))
     {
       tempReadingErrotCnt++;
       Serial.print(" - Failed temp");
     }
-    else if (status == "SENSOR_FAILURE") {
+    else if (status == "SENSOR_FAILURE")
+    {
       status = "IDLE";
+      firstSensorAlarm = true;
       tempReadingErrotCnt = 0;
       Serial.print(" - Temperature: " + String(tempC));
     }
-    else {
+    else
+    {
       tempReadingErrotCnt = 0;
       Serial.print(" - Temperature: " + String(tempC));
     }
+    #ifdef DEBUG
+    Serial.print(" | Fail count: " + String(tempReadingErrotCnt));
+    #endif
+
     lastMesurementTime = millis();
 
-    if (tempReadingErrotCnt >= 5) status = "SENSOR_FAILURE";
+    if (tempReadingErrotCnt >= 5)
+      status = "SENSOR_FAILURE";
+    // Done counting errors
 
-    Serial.print(" | Fail count: " + String(tempReadingErrotCnt));
-
-    Serial.println(" | System status: " + status);
-
-    if (status == "IDLE" && tempC >= PRE_ALARM_TEMPERATURE)
+    if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= PRE_ALARM_TEMPERATURE && tempC < ALARM_TEMPERATURE))
     {
-      status = "PRE_ALARM";
-      sendEmail("PRE_ALARM");
+      if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
+      {
+        status = "PRE_ALARM";
+        firstTempAlarm = false;
+        sendEmail("PRE_ALARM");
+        lastAlarmEmailTime = millis();
+      }
     }
-    if (status == "PRE_ALARM" && tempC >= ALARM_TEMPERATURE)
+    else if ((status == "PRE_ALARM" || status == "ALARM") && tempC >= ALARM_TEMPERATURE)
     {
-      status = "ALARM";
-      sendEmail("ALARM");
+      if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
+      {
+        status = "ALARM";
+        firstTempAlarm = false;
+        sendEmail("ALARM");
+        lastAlarmEmailTime = millis();
+      }
     }
-    else if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= PRE_ALARM_TEMPERATURE - ALARM_RESET_THRESHOLD)
+    if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= PRE_ALARM_TEMPERATURE - ALARM_RESET_THRESHOLD)
     {
       status = "IDLE";
+      firstTempAlarm = true;
       sendEmail("ALARM_RESET");
     }
+
+    #ifdef DEBUG
+    Serial.print(" | Last alarm  time diff ");
+    Serial.print(TimeDiff(lastAlarmEmailTime, millis()));
+    Serial.print(" | Last failure time diff ");
+    Serial.print(TimeDiff(lastFailureEmailTime, millis()));
+    #endif
+    Serial.print(" | System status: " + status);
+    Serial.println(" | Previous system status: " + previousStatus);
   }
-  else if(status == "CONFIG")
+  if (status == "SENSOR_FAILURE")
+  {
+    if (firstSensorAlarm || TimeDiff(lastFailureEmailTime, millis()) > alarmEmailInterval)
+    {
+      firstSensorAlarm = false;
+      lastFailureEmailTime = millis();
+      sendEmail("SENSOR_FAILURE");
+    }
+  }
+  else if (status == "CONFIG")
   {
     serialConfiguration();
   }
-  else if (status == "SENSOR_FAILURE" && millis()-lastFailureEmailTime>14400000) // if there is a failure in the sensor sends an email every four hours
-  {
-    sendEmail("SENSOR_FAILURE");
-    lastFailureEmailTime = millis();
-  }
-  
-  if (status == "IDLE") blinkLed(50, 950, ledGreenPin);
-  else if (status == "PRE_ALARM") blinkLed(50, 950, ledRedPin);
-  else if (status == "ALARM") blinkLed(50, 250, ledRedPin);
-  else if (status == "CONFIG") blinkLed(50, 950, ledBluePin);
+
+  if (status == "IDLE")
+    blinkLed(50, 950, ledGreenPin);
+  else if (status == "PRE_ALARM")
+    blinkLed(50, 950, ledRedPin);
+  else if (status == "ALARM")
+    blinkLed(50, 250, ledRedPin);
+  else if (status == "CONFIG")
+    blinkLed(50, 950, ledBluePin);
+
+  previousStatus = status;
+}
+
+unsigned long TimeDiff(unsigned long lastTime, unsigned long currTime)
+{
+  if (currTime < lastTime)
+
+    return (0xffffffff - lastTime+ currTime);
+
+  return (currTime- lastTime);
 }
 
 int getStringFromSerial(char *serialBuffer, String prompt, int mode)
@@ -314,6 +383,7 @@ int getStringFromSerial(char *serialBuffer, String prompt, int mode)
 }
 
 String strToAst(String inputString) {
+  if (inputString.length() == 0) return "";
   for (int i = 1; i<(inputString.length()-1); i++) inputString.setCharAt(i, '*');
   return inputString;
 }
@@ -341,11 +411,12 @@ void printConfig(int mode) {
   }
   userSettings.end();
   Serial.println("Temperature:");
-  userSettings.begin("temperature");
+  userSettings.begin("alarms");
   Serial.println("    Pre alarm temperature - " + String(userSettings.getFloat("pre_alarm")) + " °C");
   Serial.println("    Alarm temperature - " + String(userSettings.getFloat("alarm_threshold")) + " °C");
   Serial.println("    Alarm reset threshold - " + String(userSettings.getFloat("reset_threshold")) + " °C");
-  Serial.println("    Intervall beetween mesurements - " + String(userSettings.getInt("mesure_interval")) + " seconds");
+  Serial.println("    Time intervall beetween mesurements - " + String(userSettings.getInt("mesure_interval")) + " seconds");
+  Serial.println("    Time intervall beetween alarm email - " + String(userSettings.getInt("alarm_interval")) + " minutes");
   userSettings.end();
   Serial.println("Email:");
   userSettings.begin("email");
@@ -447,6 +518,7 @@ void smtpCallback(SMTP_Status status)
 
 void sendEmail(String messageType)
 {
+  #ifndef NO_MAIL 
   // Declare the session config data
   ESP_Mail_Session session;
   // Set the session config
@@ -544,6 +616,12 @@ void sendEmail(String messageType)
     Serial.println("Error sending Email, " + smtp.errorReason());
   else
     Serial.println(F("Email sent successfully"));
+  #endif
+  #ifdef NO_MAIL
+  
+  Serial.print("  | Sending mail " + messageType + "  | ");
+
+  #endif
 }
 
 void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
@@ -615,7 +693,7 @@ void serialConfiguration()
   Serial.println("Temperature sensor configuration");
   Serial.println("Note: Temperatures cannot be set at 0.00 °C");
   
-  userSettings.begin("temperature");
+  userSettings.begin("alarms");
   while(true) {
     do
     {
@@ -638,7 +716,15 @@ void serialConfiguration()
       else if (String(buf) == String("")) break;
     } while (String(buf).toFloat() == float(0.0));
 
-    do
+    if(userSettings.getFloat("pre_alarm") < userSettings.getFloat("alarm_threshold")) break;
+    else {
+      Serial.println("  ERROR! PRE-ALARM TEMPERATURE CANNOT BE GRATER THAN THE ALARM TEMPERATURE!");
+      Serial.println();
+      Serial.println("  Retry.");
+    }
+  }
+
+do
     {
       Serial.println();
       getStringFromSerial(buf, "  Alarm reset threshold (" + String(userSettings.getFloat("reset_threshold")) + "°C ): ", MODE_CLEAR_TEXT);
@@ -647,7 +733,7 @@ void serialConfiguration()
       else if (String(buf) == String("")) break;
     } while (String(buf).toFloat() == float(0.0));
 
-    do
+  do
     {
       Serial.println();
       getStringFromSerial(buf, "  Intervall between mesurements (" + String(userSettings.getInt("mesure_interval")) + " seconds): ", MODE_CLEAR_TEXT);
@@ -658,15 +744,19 @@ void serialConfiguration()
       }
       else if (String(buf) == String("")) break;
     } while (String(buf).toInt() == long(0));
-    Serial.println();
 
-    if(userSettings.getFloat("pre_alarm") < userSettings.getFloat("alarm_threshold")) break;
-    else {
-      Serial.println("  ERROR! PRE-ALARM TEMPERATURE CANNOT BE GRATER THAN THE ALARM TEMPERATURE!");
+    do
+    {
       Serial.println();
-      Serial.println("  Retry.");
-    }
-  }
+      getStringFromSerial(buf, "  Time intervall between alarm emails (" + String(userSettings.getInt("alarm_interval")) + " minutes): ", MODE_CLEAR_TEXT);
+      sscanf(buf, "%04d", &intBuf);
+      if (intBuf != 0 && String(buf) != String(""))
+      {
+        userSettings.putInt("alarm_interval", intBuf);
+      }
+      else if (String(buf) == String("")) break;
+    } while (String(buf).toInt() == long(0));
+    Serial.println();
   
   userSettings.end();
 
