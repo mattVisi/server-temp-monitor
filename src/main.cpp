@@ -187,6 +187,8 @@ void setup()
       Serial.println();
       Serial.println("ERROR: WiFi connect timeout");
       Serial.println("WiFi not connected. Check your network configuration.");
+      delay(2000);
+      ESP.restart();
     } else {
       Serial.println();
       Serial.println(" DONE");
@@ -327,7 +329,13 @@ void loop()
     blinkLed(50, 250, ledRedPin);
   else if (status == "CONFIG")
     blinkLed(50, 950, ledBluePin);
-
+  
+  if (WiFi.status() != WL_CONNECTED) {
+      Serial.println();
+      Serial.println("ERROR: WiFi disconnected");
+      delay(2000);
+      ESP.restart();
+    }
   previousStatus = status;
 }
 
