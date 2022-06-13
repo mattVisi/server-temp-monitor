@@ -69,6 +69,7 @@ bool firstSensorAlarm = true;   // Flag which is true until any sensor failure a
 Preferences userSettings;
 
 hw_timer_t *buttonTimer = NULL;
+hw_timer_t *blinkerTimer = NULL;
 
 void IRAM_ATTR onTimer() 
 {
@@ -84,6 +85,75 @@ void IRAM_ATTR onTimer()
       status = "CONFIG";
       isPressed = !isPressed;
     }
+  }
+}
+
+bool blinkerState = false;
+int RGB_LEDCode = 0;
+int interruptCnt = 0;
+int timeOn = 20;
+int timeOff = 1000;
+void IRAM_ATTR RGBtimerBlinker() 
+{
+  if(blinkerState) {
+    interruptCnt++;
+    if (interruptCnt == timeOn) {
+      blinkerState = !blinkerState;
+      interruptCnt = 0;
+    }
+    switch(RGB_LEDCode) {
+    case 0:
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledBluePin, LOW);
+    break;
+    case 1:
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledBluePin, HIGH);
+    break;
+    case 2:
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledBluePin, LOW);
+    break;
+    case 3:
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledBluePin, HIGH);
+    break;
+    case 4:
+    digitalWrite(ledRedPin, HIGH);
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledBluePin, LOW);
+    break;
+    case 5:
+    digitalWrite(ledRedPin, HIGH);
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledBluePin, HIGH);
+    break;
+    case 6:
+    digitalWrite(ledRedPin, HIGH);
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledBluePin, LOW);
+    break;
+    case 7:
+    digitalWrite(ledRedPin, HIGH);
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledBluePin, HIGH);
+    break;
+    default:
+    break;
+  }
+  } else {
+    interruptCnt++;
+    if (interruptCnt == timeOff) {
+      blinkerState = !blinkerState;
+      interruptCnt = 0;
+    }
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledBluePin, LOW);
   }
 }
 
@@ -167,12 +237,23 @@ void setup()
   digitalWrite(ledRedPin, LOW);
   digitalWrite(ledGreenPin, LOW);
 
-  Serial.print("Initializing timer . . .");
+  Serial.print("Initializing timers . . .");
+  // debounce timer
   buttonTimer = timerBegin(0, 80, true);
   timerAttachInterrupt(buttonTimer, &onTimer, true);
   timerAlarmWrite(buttonTimer, 100000, true);
   timerAlarmEnable(buttonTimer);
+  // RGB LED blinker timer
+  blinkerTimer = timerBegin(1, 80, true);
+  timerAttachInterrupt(blinkerTimer, &RGBtimerBlinker, true);
+  timerAlarmWrite(blinkerTimer, 1000, true);  // Starting a 1kHz timer
+  timerAlarmEnable(blinkerTimer);
   Serial.println("DONE");
+
+  // blink ble LED until start of the main loop
+  timeOn = 50;
+  timeOff = 30;
+  RGB_LEDCode = 1;
 
   Serial.println("Connecting to WiFi");
   connectToWiFi();
@@ -228,9 +309,13 @@ void setup()
   #endif
 
   // enable or disable the email debug via Serial port
-  smtp.debug(1);
+  smtp.debug(0);
   // Set the callback function to get the sending results
   smtp.callback(smtpCallback);
+
+  timeOn = 50;
+  timeOff = 950;
+  RGB_LEDCode = 2;
 }
 
 void loop()
@@ -252,6 +337,9 @@ void loop()
     else if (status == "SENSOR_FAILURE")
     {
       status = "IDLE";
+      timeOn = 50;
+    timeOff = 950;
+    RGB_LEDCode = 2;
       firstSensorAlarm = true;
       tempReadingErrotCnt = 0;
       Serial.print(" - Temperature: " + String(tempC));
@@ -264,28 +352,33 @@ void loop()
     #ifdef DEBUG
     Serial.print(" | Fail count: " + String(tempReadingErrotCnt));
     #endif
-
     lastMesurementTime = millis();
-
     if (tempReadingErrotCnt >= 5)
       status = "SENSOR_FAILURE";
-    // Done counting errors
+    // Finish getting tem & counting ev. errors
 
     if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= PRE_ALARM_TEMPERATURE && tempC < ALARM_TEMPERATURE))
     {
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
       {
         status = "PRE_ALARM";
+        timeOn = 50;
+        timeOff = 950;
+        RGB_LEDCode = 6;
         firstTempAlarm = false;
         sendEmail("PRE_ALARM");
         lastAlarmEmailTime = millis();
       }
     }
-    else if ((status == "PRE_ALARM" || status == "ALARM") && tempC >= ALARM_TEMPERATURE)
+    else if ((status == "IDLE" || status == "PRE_ALARM" || status == "ALARM") && tempC >= ALARM_TEMPERATURE)
     {
+      if (previousStatus != status) firstTempAlarm = true;
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
       {
         status = "ALARM";
+        timeOn = 50;
+        timeOff = 250;
+        RGB_LEDCode = 4;
         firstTempAlarm = false;
         sendEmail("ALARM");
         lastAlarmEmailTime = millis();
@@ -294,6 +387,9 @@ void loop()
     if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= PRE_ALARM_TEMPERATURE - ALARM_RESET_THRESHOLD)
     {
       status = "IDLE";
+      timeOn = 50;
+    timeOff = 950;
+    RGB_LEDCode = 2;
       firstTempAlarm = true;
       sendEmail("ALARM_RESET");
     }
@@ -321,21 +417,15 @@ void loop()
     serialConfiguration();
   }
 
-  if (status == "IDLE")
-    blinkLed(50, 950, ledGreenPin);
-  else if (status == "PRE_ALARM")
-    blinkLed(50, 950, ledRedPin);
-  else if (status == "ALARM")
-    blinkLed(50, 250, ledRedPin);
-  else if (status == "CONFIG")
-    blinkLed(50, 950, ledBluePin);
-  
+
+
   if (WiFi.status() != WL_CONNECTED) {
-      Serial.println();
-      Serial.println("ERROR: WiFi disconnected");
-      delay(2000);
-      ESP.restart();
-    }
+    Serial.println();
+    Serial.println("ERROR: WiFi disconnected");
+    delay(2000);
+    ESP.restart();
+  }
+
   previousStatus = status;
 }
 
@@ -632,31 +722,16 @@ void sendEmail(String messageType)
   #endif
 }
 
-void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin)
-{
-  if (ledState == HIGH && millis() - lastBlink > millisecondsOn)
-  {
-    digitalWrite(ledPin, LOW);
-    ledState = !ledState;
-    lastBlink = millis();
-    return;
-  }
-  else if (ledState == LOW && millis() - lastBlink > millisecondsOff)
-  {
-    digitalWrite(ledPin, HIGH);
-    ledState = !ledState;
-    lastBlink = millis();
-    return;
-  }
-  else
-    return;
-}
-
 void serialConfiguration() 
 {
   char buf[SERIAL_BUFFER_SIZE+1];
   float floatBuf;
   int intBuf;
+
+  timeOn = 50;
+  timeOff = 950;
+  RGB_LEDCode = 1;
+
   Serial.println();
   Serial.println();
   Serial.println(" ---- CONFIGURATION ---- ");
