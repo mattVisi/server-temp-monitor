@@ -33,7 +33,7 @@ unsigned long lastAlarmEmailTime;   // Last time (millis) an alarm email was sen
 bool isPressed = false;
 int buttonCnt = 0;
 int buttonState;
-#define SERIAL_BUFFER_SIZE 128
+#define SERIAL_BUFFER_SIZE 64
 #define MODE_CLEAR_TEXT 0
 #define MODE_PASSWORD 1
 
@@ -61,7 +61,7 @@ unsigned long alarmEmailInterval;  // Time intervall (milliseconds) beetween eac
 bool firstTempAlarm = true;   // Flag which is true until a temperature alarm is triggered
 bool firstSensorAlarm = true;   // Flag which is true until any sensor failure alarm is triggered
 
-unsigned long imAliveIntervall;  // Time intervall (milliseconds) beetween each alarm email
+unsigned long imAliveIntervall;  // Time intervall (milliseconds) beetween each "I'm alive" email
 unsigned long lastImAliveEmail = 0;   //  The last time (millis) an "I'm alive" email was sent
 /*
 #############################
@@ -272,7 +272,6 @@ void setup()
       Serial.println("ERROR: WiFi connect timeout");
       Serial.println("WiFi not connected. Check your network configuration.");
       delay(2000);
-      ESP.restart();
     } else {
       Serial.println();
       Serial.println(" DONE");
@@ -298,10 +297,10 @@ void setup()
   ALARM_TEMPERATURE = userSettings.getFloat("alarm_threshold");
   ALARM_RESET_THRESHOLD = userSettings.getFloat("reset_threshold");
   mesurementInterval = userSettings.getInt("mesure_interval")*1000;
-  alarmEmailInterval = userSettings.getInt("alarm_interval")*60000;
+  alarmEmailInterval = userSettings.getInt("alarm_interval")*60000;   // 1 min = 60000 ms
   userSettings.end();
   userSettings.begin("email");
-  imAliveIntervall = userSettings.getInt("imAlive_intrvl")*60000;
+  imAliveIntervall = userSettings.getInt("imAlive_intrvl")*3600000;  // 1 hr = 3600000 ms
   userSettings.end();
 
   #ifdef DEBUG
@@ -604,6 +603,7 @@ int getTemperature(float &tempVar)
 
 void smtpCallback(SMTP_Status status)
 {
+  #ifdef DEBUG
   Serial.println(status.info());
   if (status.success())
   {
@@ -625,6 +625,7 @@ void smtpCallback(SMTP_Status status)
     }
     Serial.println("----------------\n");
   }
+  #endif
 }
 
 void sendEmail(String messageType)
@@ -716,6 +717,18 @@ void sendEmail(String messageType)
     // Set the message content
     message.text.content = "Sono vivo e sto controllando la sala server. L'ultima misurazione è stata di " + String(tempC) + " °C." + "\nSono acceso da " + String(millis()/1000) + " secondi. La prossima email di questo tipo sarà inviata tra "+String(imAliveIntervall/3600000)+" ore";
   }
+  else if (messageType == "TEST")
+  {
+    // Set the message headers
+    userSettings.begin("email");
+    message.sender.name = userSettings.getString("author_name");
+    message.sender.email = userSettings.getString("sender_address");
+    message.subject = "Email di test - Temperatura sala server";
+    message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
+    
+    // Set the message content
+    message.text.content = "Questa è un'email di prova del sistema di monitoraggio della temperatura.";
+  }
   else
     return;
 
@@ -740,6 +753,7 @@ void serialConfiguration()
   char buf[SERIAL_BUFFER_SIZE+1];
   float floatBuf;
   int intBuf;
+  bool networkConfigChanged = false;
 
   timeOn = 50;
   timeOff = 950;
@@ -752,8 +766,11 @@ void serialConfiguration()
   Serial.println("\nNetwork configuration:");
   userSettings.begin("network");
   getStringFromSerial(buf, "  SSID (" + userSettings.getString("ssid") + "): ", MODE_CLEAR_TEXT);
-  if(String(buf) != String("")) userSettings.putString("ssid", String(buf));
-  
+  if(String(buf) != String("")) 
+  {
+    userSettings.putString("ssid", String(buf));
+    networkConfigChanged = true;
+  }
 
   while(true) {
     Serial.println();
@@ -768,17 +785,32 @@ void serialConfiguration()
   Serial.println();
   if (String(userSettings.getString("isWpaEnterprise")) == String("no")) {
     getStringFromSerial(buf, "  Password (" + strToAst(userSettings.getString("passwd")) + "): ", MODE_PASSWORD);
-    if(String(buf) != String("")) userSettings.putString("passwd", String(buf));
+    if(String(buf) != String("")) 
+    {
+      userSettings.putString("passwd", String(buf));
+      networkConfigChanged = true;
+    }
     Serial.println();
-  } else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) {
+  } 
+  else if (String(userSettings.getString("isWpaEnterprise")) == String("yes")) 
+  {
     getStringFromSerial(buf, "  User ID (" + userSettings.getString("eap_id") + "): ", MODE_CLEAR_TEXT);
-    if(String(buf) != String("")) userSettings.putString("eap_id", String(buf));
+    if(String(buf) != String("")) {
+      userSettings.putString("eap_id", String(buf));
+      networkConfigChanged = true;
+    }
     Serial.println();
     getStringFromSerial(buf, "  Username (" + userSettings.getString("eap_username") + "): ", MODE_CLEAR_TEXT);
-    if(String(buf) != String("")) userSettings.putString("eap_username", String(buf));
+    if(String(buf) != String("")) {
+      userSettings.putString("eap_username", String(buf));
+      networkConfigChanged = true;
+    }
     Serial.println();
     getStringFromSerial(buf, "  Password (" + strToAst(userSettings.getString("eap_password")) + "): ", MODE_PASSWORD);
-    if(String(buf) != String("")) userSettings.putString("eap_password", String(buf));
+    if(String(buf) != String("")) {
+      userSettings.putString("eap_password", String(buf));
+      networkConfigChanged = true;
+    }
     Serial.println();
   }
   userSettings.end();
@@ -812,7 +844,8 @@ void serialConfiguration()
 
     if(userSettings.getFloat("pre_alarm") < userSettings.getFloat("alarm_threshold")) break;
     else {
-      Serial.println("\n  ERROR! PRE-ALARM TEMPERATURE CANNOT BE GRATER THAN THE ALARM TEMPERATURE!");
+      Serial.println();
+      Serial.println("  ERROR! PRE-ALARM TEMPERATURE CANNOT BE GRATER THAN THE ALARM TEMPERATURE!");
       Serial.println("  Retry.");
     }
   }
@@ -895,12 +928,37 @@ do
     Serial.println();
 
   userSettings.end();
-  Serial.println();
-  Serial.println();
-  delay(1000);
-  Serial.println("Configuration completed.");
-  delay(1000);
   
+  while(true) {
+    Serial.println();
+    
+    getStringFromSerial(buf, "Do you want to send a test email? yes/no: ", MODE_CLEAR_TEXT);
+    if (String(buf) == String("yes") || String(buf) == String("no")) break;
+  }
+  Serial.println();
+  if (String(buf) == String("yes")) {
+    if(networkConfigChanged)
+    {
+      Serial.println("WARNING: The network configuration has changed. A reboot is needed to establish the connection. Before the reboot emails could NOT be sent.");
+      delay(6000);
+      Serial.println("After the reboot, you can come back here without making further changes to send a test email. To reboot answer 'yes' to the next question.");
+      delay(6000);
+    } 
+    else 
+    {
+      delay(500);
+      Serial.println("Sending email ...");
+      delay(300);
+      sendEmail("TEST");
+    }
+  } else delay(500);
+
+  Serial.println();
+  Serial.println();
+  delay(700);
+  Serial.println("Configuration completed.");
+  delay(700);
+
   #ifdef DEBUG
   printConfig(MODE_CLEAR_TEXT);
   #endif
@@ -910,7 +968,7 @@ do
 
   while(true) {
     Serial.println();
-    getStringFromSerial(buf, "Confirm? yes/no: ", MODE_CLEAR_TEXT);
+    getStringFromSerial(buf, "Confirm the current configuration? yes/no: ", MODE_CLEAR_TEXT);
     if (String(buf) == String("yes") || String(buf) == String("no")) break;
   }
   Serial.println();
