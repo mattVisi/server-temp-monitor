@@ -242,7 +242,6 @@ void setup()
   userSettings.putString("sender_password", "password");
   userSettings.putString("author_name", "ESP32 - Server temp monitor");
   userSettings.putString("recipient_1", "");
-  userSettings.putString("imAliveMessage", "no");
   userSettings.putInt("imAlive_intrvl", 30);  // time intervall (days) beetween "Im alive" emails
   userSettings.end();
   #endif
@@ -736,7 +735,7 @@ void sendEmail(String messageType)
     message.sender.email = userSettings.getString("sender_address");
     message.subject = "Temperatura sala server - I'm alive!";
     message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
-    
+    userSettings.end();
     // Set the message content
     message.text.content = "Sono vivo e sto controllando la sala server. L'ultima misurazione è stata di " + String(tempC) + " °C." + "\nSono acceso da " + String(millis()/1000) + " secondi. La prossima email di questo tipo sarà inviata tra "+String(imAliveIntervall/3600000)+" ore";
   }
@@ -748,7 +747,7 @@ void sendEmail(String messageType)
     message.sender.email = userSettings.getString("sender_address");
     message.subject = "Email di test - Temperatura sala server";
     message.addRecipient("Tecnici", userSettings.getString("recipient_1"));
-    
+    userSettings.end();
     // Set the message content
     message.text.content = "Questa è un'email di prova del sistema di monitoraggio della temperatura.";
   }
