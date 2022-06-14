@@ -16,6 +16,4 @@ Per l'invio delle email si utilizzza la libreria [ESP Mail Client](https://githu
 Per lo sviluppo del firmware viene utilizzato l'ambiente di sviluppo PlatformIO.
 <br>
 Il cuore del progetto è un microcontrollore ESP32, la temperatura viene misurata da un sensore DS18B20.
-
-Se hai trovato un bug o vuoi proporre una modifica del codice apri pure una pull request.
 <br>
