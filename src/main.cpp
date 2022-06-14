@@ -210,6 +210,7 @@ void setup()
   
   Serial.println();
   Serial.println("### Temperature monitor with email alarm notification ###");
+  Serial.println("      Version 1.0");
   Serial.println("Copyright 2022 Matteo Visintini");
   Serial.println("This project is proudly open source, the software is distributed under the GNU General Public License");
   Serial.println("Source code, license and documentation are availble at: https://github.com/mattVisi/server-temp-monitor");
