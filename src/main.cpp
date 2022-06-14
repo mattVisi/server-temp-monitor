@@ -1,9 +1,23 @@
 /*
 ### Temperature monitor with email alarm notification ###
 
-Produced by Matteo Visintini for ITS Alessandro Volta - Trieste
+Developed by Matteo Visintini for ITS "Alessandro Volta" - Trieste
+© Copyright 2022 Matteo Visintini
 
-Support for both WPA2 Personal and WPA2 Enterprise WiFi security
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or any 
+later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Source code, license and documentation are availble at: https://github.com/mattVisi/server-temp-monitor
 */
 
 #include <Arduino.h>
@@ -193,6 +207,14 @@ void setup()
   Serial.begin(115200);
   delay(2000);
   // while(!Serial) {;}    //Waits for the serial port to open. uSE ONLY when debugging via serial port
+  
+  Serial.println();
+  Serial.println("### Temperature monitor with email alarm notification ###");
+  Serial.println("Copyright 2022 Matteo Visintini");
+  Serial.println("This project is proudly open source, the software is distributed under the GNU General Public License");
+  Serial.println("Source code, license and documentation are availble at: https://github.com/mattVisi/server-temp-monitor");
+  delay(1000);
+
 
   #ifdef CONFIG_ON_STARTUP
   userSettings.begin("network");
