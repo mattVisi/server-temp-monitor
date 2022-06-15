@@ -210,7 +210,7 @@ void setup()
   
   Serial.println();
   Serial.println("### Temperature monitor with email alarm notification ###");
-  Serial.println("      Version 1.0");
+  Serial.println("      Version 1.1");
   Serial.println("Copyright 2022 Matteo Visintini");
   Serial.println("This project is proudly open source, the software is distributed under the GNU General Public License");
   Serial.println("Source code, license and documentation are availble at: https://github.com/mattVisi/server-temp-monitor");
@@ -275,7 +275,7 @@ void setup()
   timerAlarmEnable(blinkerTimer);
   Serial.println("DONE");
 
-  // blink ble LED until start of the main loop
+  // blink blue LED until start of the main loop
   timeOn = 50;
   timeOff = 30;
   RGB_LEDCode = 1;
@@ -365,8 +365,8 @@ void loop()
     {
       status = "IDLE";
       timeOn = 50;
-    timeOff = 950;
-    RGB_LEDCode = 2;
+      timeOff = 950;
+      RGB_LEDCode = 2;
       firstSensorAlarm = true;
       tempReadingErrotCnt = 0;
       Serial.print(" - Temperature: " + String(tempC));
@@ -382,6 +382,9 @@ void loop()
     lastMesurementTime = millis();
     if (tempReadingErrotCnt >= 5)
       status = "SENSOR_FAILURE";
+      timeOn = 50;
+      timeOff = 250;
+      RGB_LEDCode = 4;
     // Finish getting tem & counting ev. errors
 
     if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= PRE_ALARM_TEMPERATURE && tempC < ALARM_TEMPERATURE))
@@ -404,7 +407,7 @@ void loop()
       {
         status = "ALARM";
         timeOn = 50;
-        timeOff = 250;
+        timeOff = 950;
         RGB_LEDCode = 4;
         firstTempAlarm = false;
         sendEmail("ALARM");
@@ -415,8 +418,8 @@ void loop()
     {
       status = "IDLE";
       timeOn = 50;
-    timeOff = 950;
-    RGB_LEDCode = 2;
+      timeOff = 950;
+      RGB_LEDCode = 2;
       firstTempAlarm = true;
       sendEmail("ALARM_RESET");
     }
