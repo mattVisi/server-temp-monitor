@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://github.com/mattVisi/server-temp-monitor/manual/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Istruzioni per l'uso - server-temp-monitor</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Istruzioni per l\u0027uso";
+        var mkdocs_page_input_path = "manual.md";
+        var mkdocs_page_url = "/mattVisi/server-temp-monitor/manual/";
+      </script>
+    
+    <script src="../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> server-temp-monitor
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="./">Istruzioni per l'uso</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#avvio-del-sistema">Avvio del sistema</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#primo-utilizzo">Primo utilizzo</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#led-di-indicazione">LED di indicazione</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#configurazione">Configurazione</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#il-pannello-di-configurazione">Il pannello di configurazione</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#network-configuration">Network configuration</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#temperature-and-alarm-configuration">Temperature and alarm configuration</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#email-configuration">Email configuration</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../reference/">Project reference</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../about/">About</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">server-temp-monitor</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" alt="Docs"></a> &raquo;</li><li>Istruzioni per l'uso</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="istruzioni-per-luso">Istruzioni per l'uso</h1>
+<h2 id="avvio-del-sistema">Avvio del sistema</h2>
+<p>Per avviare il sistema basta collegarlo tramite un cavo Micro USB ad un alimentatore che fornisca almeno 1A di corrente a una tensione di 5V.<br />
+Il microcontrollore avvierà automaticamente il software caricato in memoria, inizializzerà il sensore di temperatura e proverà a connettersi alla rete WiFi con le impostazioni salvate precedentemente nella configurazione.</p>
+<p>Durante il processo di avvio il LED di indicazione lampeggerà velocemente di colore BLU.</p>
+<hr />
+<p>NOTA: Nel caso il sistema venisse disconnesso dalla rete WiFi, verrà riavviato continuamente fino a che non sarà stabilita una connessione.</p>
+<hr />
+<h4 id="primo-utilizzo">Primo utilizzo</h4>
+<p>Per utilizzare il sistema è necessario collegarlo a una rete WiFi. Se è la prima volta che utilizzi il sistema, devi configurare la connessione di rete e qualunque altra impostazione desideri tramite l'<a href="#configurazione">interfaccia di configurazione</a>.</p>
+<hr />
+<h2 id="led-di-indicazione">LED di indicazione</h2>
+<p>Il led RGB integrato ti permette di sapere lo stato del sistema in base al colore e la velocità con cui lampeggia.</p>
+<table>
+<thead>
+<tr>
+<th align="center"><strong>Colore</strong></th>
+<th align="center"><strong>Descrizione del lampeggio</strong></th>
+<th align="center"><strong>Stato</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="center">Blu</td>
+<td align="center">Molto veloce</td>
+<td align="center">Avvio del sistema</td>
+</tr>
+<tr>
+<td align="center">Verde</td>
+<td align="center">Breve, ogni secondo</td>
+<td align="center">Sistema in funzione</td>
+</tr>
+<tr>
+<td align="center">Giallo</td>
+<td align="center">Breve, ogni secondo</td>
+<td align="center">Soglia di pre allarme superata</td>
+</tr>
+<tr>
+<td align="center">Rosso</td>
+<td align="center">Breve, ogni secondo</td>
+<td align="center">Soglia di allarme superata</td>
+</tr>
+<tr>
+<td align="center">Rosso</td>
+<td align="center">Veloce</td>
+<td align="center">Guasto al sensore</td>
+</tr>
+<tr>
+<td align="center">Blu</td>
+<td align="center">Breve, ogni secondo</td>
+<td align="center">Modalità di configurazione</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="configurazione">Configurazione</h2>
+<p>Per la configurazione del sistema è necessario collegarlo a un computer tramite un cavo USB e accedere all'interfaccia seriale (baud rate 115200) tramite un emulatore di terminale. (Consigliamo l'utilizzo del software <a href="https://putty.org/">PuTTY</a>).<br />
+-&gt; <a href="../serial_instructions/#windows">Istruzioni per utenti Windows</a></p>
+<p>Per avviare la modalità di configurazione tieni premuto il pulsante di configurazione per 3 secondi, il LED di indicazione inizierà a lampeggiare di colore blu e si avvierà il pannello di configurazione.</p>
+<hr />
+<p>NOTA: Durante il processo di avvio del sistema è possibile tener premuto per 3 secondi il pulsante di configurazione. Anche se sul momento potrebbe sembrare che non accada nulla, appena il processo di avvio sarà completato, il sistema entrerà in modalità di configurazione.</p>
+<hr />
+<h3 id="il-pannello-di-configurazione">Il pannello di configurazione</h3>
+<p>Il pannello di configurazione si presenta come una serie di campi da compilare o lasciare vuoti (in tal caso il valore precedentemente impostato rimarrà in memoria), che vengono presentati all'utente divisi in tre sezioni:  </p>
+<ul>
+<li>Network Configuration - Configurazioni che riguardano la connessione WiFi  </li>
+<li>Temperature and alarm configuration - Impostazione delle soglie di temperatura e delle allarmi</li>
+<li>Email configuration - Impostazioni che riguardano il servizio email</li>
+</ul>
+<p>Per ogni campo il valore tra parentesi () è il valore attualmente presente in memoria. Per confermarlo premere &lt; Invio &gt; senza inserire nulla.</p>
+<h4 id="network-configuration">Network configuration</h4>
+<p><code>SSID (your_ssid):</code>  Il nome della rete alla quale ci si vuole collegare  </p>
+<p><code>Are you using enterprise login? yes/no (no):</code>  Metodo di accesso alla rete WiFi (<a href="https://it.wikipedia.org/wiki/Wi-Fi_Protected_Access#Terminologia">Ulteriori informazioni</a>)  </p>
+<ul>
+<li>Se avrai risposto <code>no</code> alla domanda precedente, ti verrà chiesto di inserire la password della rete alla quale vuoi accedere:</li>
+</ul>
+<p><code>Password (your_password):</code></p>
+<ul>
+<li>Se invece utilizzi un metodo di accesso enterprise, ti verranno richieste le credenziali di accesso:</li>
+</ul>
+<p><code>User ID (your_ID):</code><br />
+<code>Username (your_username):</code><br />
+<code>Password (your_password):</code>  </p>
+<h4 id="temperature-and-alarm-configuration">Temperature and alarm configuration</h4>
+<p><code>Pre alarm temperature (30.00°C ):</code>  La temperatura alla quale il sistema invierà le email di attenzione.</p>
+<p><code>Alarm temperature (35.00°C ):</code>  Temperatura sopra la quale il sistema invierà le email di allarme</p>
+<p><code>Alarm reset threshold (1.00°C ):</code>  Temperatura sottratta alla soglia sotto la quale rientra lo stato di allarme corrente.</p>
+<p><code>Intervall between mesurements (10 seconds):</code>  Intervallo di tempo, in secondi, tra le misurazioni della temperatura.</p>
+<p><code>Time intervall between alarm emails (2 minutes):</code>  Intervallo di tempo, in minuti, tra l'invio di email consecutive relative allo stesso stato di allarme.</p>
+<h4 id="email-configuration">Email configuration</h4>
+<p><code>SMTP server address (smtp.gmail.com):</code>  Indirizzo del server SMTP utilizzato per inviare le email.</p>
+<p><code>SMTP port (587):</code>  Porta del server SMTP alla quale collegarsi.</p>
+<p><code>Sender email address (you@company.com):</code>  Indirizzo dal quale verranno inviate le email.</p>
+<p><code>Sender password (p******d):</code>  Password di accesso al server SMTP</p>
+<p><code>Sender name (ESP32 - Server temp monitor):</code>  Nome del mittente</p>
+<p><code>Recipient email address (someone@agency.net):</code>  Indirizzo email del destinatario</p>
+<p><code>Time intervall between I'm alive emails (1 hours):</code>  Il sistema invia un'email che ne assicura il corretto funzionamento a intervalli regolari. Qua puoi configurare l'intervallo di tempo (espresso in ore) tra l'invio di queste email.</p>
+<h6 id="email-di-test">Email di test</h6>
+<p><code>Do you want to send a test email? yes/no:</code></p>
+<p>Se si risponde <code>yes</code> il sistema invia una email di prova con le impostazioni appena settate.</p>
+<hr />
+<p>NOTA: Se ci sono state delle modifiche alla configurazione di rete, il sistema non può inviare una email di prova, perchè la connessione alla rete WiFi avviene soltanto all'avvio.<br />
+ In tal caso puoi concludere la configurazione, ritornare qua dopo che il sistema si sarà riavviato senza modificare ulteriormente la configurazione di rete e inviare quindi l'email di prova</p>
+<hr />
+<h6 id="fine-della-configurazione">Fine della configurazione</h6>
+<p>Alla fine della procedura il sistema stamperà un resoconto della configurazione impostata e chiederà:</p>
+<p><code>Confirm the current configuration? yes/no:</code></p>
+<p>Se si risponde <code>yes</code> il sistema si riavvierà con le impostazioni appena settate.<br />
+Se si risponde <code>no</code> si ritornerà all'inizio del pannello di configurazione per poter modificare nuovamente i paramentri.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../reference/" class="btn btn-neutral float-right" title="Project reference">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../reference/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme_extra.js" defer></script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>
