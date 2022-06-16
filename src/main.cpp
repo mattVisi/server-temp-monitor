@@ -48,6 +48,7 @@ bool isPressed = false;
 int buttonCnt = 0;
 int buttonState;
 #define SERIAL_BUFFER_SIZE 64
+#define WIFI_SSID_SIZE 32
 #define MODE_CLEAR_TEXT 0
 #define MODE_PASSWORD 1
 
@@ -67,9 +68,9 @@ char *EAP_USERNAME; // Enterprise WiFi credentials. Leave empty when not using W
 char *EAP_PASSWORD; // Enterprise WiFi credentials. Leave empty when not using WPA2 Enterprise
 
 // TEMPERATURE CONFIGURATION
-float PRE_ALARM_TEMPERATURE; // Temperature above wich the pre alarm is triggered
-float ALARM_TEMPERATURE;     // Temperature above wich the alarm sends a notify via email
-float ALARM_RESET_THRESHOLD; // Temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
+float preAlarmTemperature; // Temperature above wich the pre alarm is triggered
+float alarmTemperature;     // Temperature above wich the alarm sends a notify via email
+float alarmResetThreshold; // Temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
 unsigned long mesurementInterval;  // Time intervall (milliseconds) beetween mesurements
 unsigned long alarmEmailInterval;  // Time intervall (milliseconds) beetween each alarm email
 bool firstTempAlarm = true;   // Flag which is true until a temperature alarm is triggered
@@ -88,6 +89,7 @@ Preferences userSettings;
 hw_timer_t *buttonTimer = NULL;
 hw_timer_t *blinkerTimer = NULL;
 
+// Timer ISR to debounce the config button
 void IRAM_ATTR onTimer() 
 {
   if (!isPressed) {
@@ -110,6 +112,8 @@ int RGB_LEDCode = 0;
 int interruptCnt = 0;
 int timeOn = 20;
 int timeOff = 1000;
+
+// Timer ISR to blink the RGB LED
 void IRAM_ATTR RGBtimerBlinker() 
 {
   if(blinkerState) {
@@ -118,6 +122,16 @@ void IRAM_ATTR RGBtimerBlinker()
       blinkerState = !blinkerState;
       interruptCnt = 0;
     }
+
+    /* 
+    The different colors available are coded as octal values, indicating which of the three LEDs are turned on.
+    Example:
+      0 = 000 => All three LEDs are off
+      1 = 001 => Only the blue LED is on
+      2 = 010 => Only the green LED is on
+      3 = 011 => Green and blue LEDs are on, resulting in aqua colored light
+      ...    
+    */
     switch(RGB_LEDCode) {
     case 0:
     digitalWrite(ledRedPin, LOW);
@@ -197,11 +211,6 @@ void smtpCallback(SMTP_Status status);
 // Function to send email
 void sendEmail(String messageType);
 
-// RGB LED stuff
-bool ledState = HIGH;
-long lastBlink = 0;
-void blinkLed(long millisecondsOn, long millisecondsOff, int ledPin);
-
 void setup()
 {
   Serial.begin(115200);
@@ -275,7 +284,7 @@ void setup()
   timerAlarmEnable(blinkerTimer);
   Serial.println("DONE");
 
-  // blink blue LED until start of the main loop
+  // Fast blinking blue LED until start of the main loop
   timeOn = 50;
   timeOff = 30;
   RGB_LEDCode = 1;
@@ -315,9 +324,9 @@ void setup()
 
   // ALARMS CONFIGURATION
   userSettings.begin("alarms");
-  PRE_ALARM_TEMPERATURE = userSettings.getFloat("pre_alarm");
-  ALARM_TEMPERATURE = userSettings.getFloat("alarm_threshold");
-  ALARM_RESET_THRESHOLD = userSettings.getFloat("reset_threshold");
+  preAlarmTemperature = userSettings.getFloat("pre_alarm");
+  alarmTemperature = userSettings.getFloat("alarm_threshold");
+  alarmResetThreshold = userSettings.getFloat("reset_threshold");
   mesurementInterval = userSettings.getInt("mesure_interval")*1000;
   alarmEmailInterval = userSettings.getInt("alarm_interval")*60000;   // 1 min = 60000 ms
   userSettings.end();
@@ -327,9 +336,9 @@ void setup()
 
   #ifdef DEBUG
   Serial.println();
-  Serial.println(PRE_ALARM_TEMPERATURE);
-  Serial.println(ALARM_TEMPERATURE);
-  Serial.println(ALARM_RESET_THRESHOLD);
+  Serial.println(preAlarmTemperature);
+  Serial.println(alarmTemperature);
+  Serial.println(alarmResetThreshold);
   Serial.println(mesurementInterval);
   Serial.println(alarmEmailInterval);
   Serial.println();
@@ -387,7 +396,7 @@ void loop()
       RGB_LEDCode = 4;
     // Finish getting tem & counting ev. errors
 
-    if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= PRE_ALARM_TEMPERATURE && tempC < ALARM_TEMPERATURE))
+    if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= preAlarmTemperature && tempC < alarmTemperature))
     {
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
       {
@@ -400,7 +409,7 @@ void loop()
         lastAlarmEmailTime = millis();
       }
     }
-    else if ((status == "IDLE" || status == "PRE_ALARM" || status == "ALARM") && tempC >= ALARM_TEMPERATURE)
+    else if ((status == "IDLE" || status == "PRE_ALARM" || status == "ALARM") && tempC >= alarmTemperature)
     {
       if (previousStatus != status) firstTempAlarm = true;
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
@@ -414,7 +423,7 @@ void loop()
         lastAlarmEmailTime = millis();
       }
     }
-    if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= PRE_ALARM_TEMPERATURE - ALARM_RESET_THRESHOLD)
+    if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= preAlarmTemperature - alarmResetThreshold)
     {
       status = "IDLE";
       timeOn = 50;
@@ -465,15 +474,17 @@ void loop()
   previousStatus = status;
 }
 
+// Function to calulate time differences using millis(), safe in case millis() overflows
 unsigned long TimeDiff(unsigned long lastTime, unsigned long currTime)
 {
   if (currTime < lastTime)
 
-    return (0xffffffff - lastTime+ currTime);
+    return (0xffffffff - lastTime + currTime);
 
   return (currTime- lastTime);
 }
 
+// Read a string interactively from the serial port
 int getStringFromSerial(char *serialBuffer, String prompt, int mode)
 {
   int i = 0;
@@ -516,12 +527,14 @@ int getStringFromSerial(char *serialBuffer, String prompt, int mode)
   return(i);
 }
 
+// Converts a clear text string to a string in which every character is replaced by an asterisk, excluding the first and the last character.
 String strToAst(String inputString) {
   if (inputString.length() == 0) return "";
   for (int i = 1; i<(inputString.length()-1); i++) inputString.setCharAt(i, '*');
   return inputString;
 }
 
+// Print the configuration currently saved in the NVS
 void printConfig(int mode) {
   Serial.println();
   Serial.println("## Current configuration ##");
@@ -568,13 +581,14 @@ void printConfig(int mode) {
   Serial.println();
 }
 
+// Connects to the wifi network using the current configuration
 void connectToWiFi()
 {
-  char ssidBuff[32];
-  char passwdBuff[50];
-  char eapIDBuff[50];
-  char eapUsernameBuff[50];
-  char eapPasswordBuff[50];
+  char ssidBuff[WIFI_SSID_SIZE];
+  char passwdBuff[SERIAL_BUFFER_SIZE];
+  char eapIDBuff[SERIAL_BUFFER_SIZE];
+  char eapUsernameBuff[SERIAL_BUFFER_SIZE];
+  char eapPasswordBuff[SERIAL_BUFFER_SIZE];
 
   userSettings.begin("network");
   if (userSettings.getString("isWpaEnterprise") == String("no"))
@@ -611,6 +625,7 @@ void connectToWiFi()
   userSettings.end();
 }
 
+// Reads the temperature from the sensor
 int getTemperature(float &tempVar)
 {
   sensors.requestTemperatures();
@@ -626,6 +641,7 @@ int getTemperature(float &tempVar)
     return 1;
 }
 
+// Callback function providing insights of the email sending process. Used only when DEBUG is defined (see top)
 void smtpCallback(SMTP_Status status)
 {
   #ifdef DEBUG
@@ -653,6 +669,7 @@ void smtpCallback(SMTP_Status status)
   #endif
 }
 
+// Sends the email message according to the requested message type
 void sendEmail(String messageType)
 {
   #ifndef NO_MAIL 
@@ -773,6 +790,7 @@ void sendEmail(String messageType)
   #endif
 }
 
+// Editing of the configuration via the serial interface
 void serialConfiguration() 
 {
   char buf[SERIAL_BUFFER_SIZE+1];
@@ -840,7 +858,7 @@ void serialConfiguration()
   }
   userSettings.end();
 
-  Serial.println("\nTemperature sensor configuration");
+  Serial.println("\nTemperature and alarm configuration");
   Serial.println("Note: Temperatures cannot be set at 0.00 °C");
   
   userSettings.begin("alarms");

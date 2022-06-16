@@ -1,0 +1,10 @@
+site_name: server-temp-monitor
+site_url: https://github.com/mattVisi/server-temp-monitor
+
+nav:
+  - Home: index.md
+  - Istruzioni per l'uso: manual.md
+  - Project reference: reference.md
+  - About: about.md
+
+theme: readthedocs
