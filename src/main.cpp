@@ -38,8 +38,11 @@ const int ledBluePin = 18;
 const int ledGreenPin = 19;
 const int ledRedPin = 21;
 const int buttonPin = 4;
-String status = "IDLE"; // System status IDLE/PRE_ALARM/ALARM/SENSOR_FAILURE/CONFIG
-String previousStatus = "IDLE";  // System status at the end of the previous loop
+
+enum system_status{IDLE, PRE_ALARM, ALARM, SENSOR_FAILURE, CONFIG};
+
+int status = IDLE; // System status IDLE/PRE_ALARM/ALARM/SENSOR_FAILURE/CONFIG
+int previousStatus = IDLE;  // System status at the end of the previous loop
 int tempReadingErrotCnt = 0; // Counts how many consecutive temperature reading errors happend
 unsigned long lastFailureEmailTime;   // Last time (millis) a failure email was sent
 unsigned long lastAlarmEmailTime;   // Last time (millis) an alarm email was sent
@@ -73,8 +76,9 @@ float alarmTemperature;     // Temperature above wich the alarm sends a notify v
 float alarmResetThreshold; // Temperature threshold subtracted to the pre alarm threshold under which the alarm is reactivated
 unsigned long mesurementInterval;  // Time intervall (milliseconds) beetween mesurements
 unsigned long alarmEmailInterval;  // Time intervall (milliseconds) beetween each alarm email
-bool firstTempAlarm = true;   // Flag which is true until a temperature alarm is triggered
-bool firstSensorAlarm = true;   // Flag which is true until any sensor failure alarm is triggered
+
+bool firstTempAlarm = true;  // Flag which is true until a temperature alarm is triggered
+bool firstSensorAlarm = true;  // Flag which is true until any sensor failure alarm is triggered
 
 unsigned long imAliveIntervall;  // Time intervall (milliseconds) beetween each "I'm alive" email
 unsigned long lastImAliveEmail = 0;   //  The last time (millis) an "I'm alive" email was sent
@@ -101,7 +105,7 @@ void IRAM_ATTR onTimer()
       return;
     }
     if (buttonCnt >= BUTTON_TIME_CONFIG) {
-      status = "CONFIG";
+      status = CONFIG;
       isPressed = !isPressed;
     }
   }
@@ -114,77 +118,84 @@ int timeOn = 20;
 int timeOff = 1000;
 
 // Timer ISR to blink the RGB LED
-void IRAM_ATTR RGBtimerBlinker() 
+void IRAM_ATTR RGBtimerBlinker()
 {
-  if(blinkerState) {
-    interruptCnt++;
-    if (interruptCnt == timeOn) {
+  interruptCnt++;
+  if (blinkerState)
+  {
+    if (interruptCnt >= timeOn)
+    {
       blinkerState = !blinkerState;
+      digitalWrite(ledRedPin, LOW);
+      digitalWrite(ledGreenPin, LOW);
+      digitalWrite(ledBluePin, LOW);
       interruptCnt = 0;
     }
-
-    /* 
-    The different colors available are coded as octal values, indicating which of the three LEDs are turned on.
-    Example:
-      0 = 000 => All three LEDs are off
-      1 = 001 => Only the blue LED is on
-      2 = 010 => Only the green LED is on
-      3 = 011 => Green and blue LEDs are on, resulting in aqua colored light
-      ...    
-    */
-    switch(RGB_LEDCode) {
-    case 0:
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledBluePin, LOW);
-    break;
-    case 1:
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledBluePin, HIGH);
-    break;
-    case 2:
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, HIGH);
-    digitalWrite(ledBluePin, LOW);
-    break;
-    case 3:
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, HIGH);
-    digitalWrite(ledBluePin, HIGH);
-    break;
-    case 4:
-    digitalWrite(ledRedPin, HIGH);
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledBluePin, LOW);
-    break;
-    case 5:
-    digitalWrite(ledRedPin, HIGH);
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledBluePin, HIGH);
-    break;
-    case 6:
-    digitalWrite(ledRedPin, HIGH);
-    digitalWrite(ledGreenPin, HIGH);
-    digitalWrite(ledBluePin, LOW);
-    break;
-    case 7:
-    digitalWrite(ledRedPin, HIGH);
-    digitalWrite(ledGreenPin, HIGH);
-    digitalWrite(ledBluePin, HIGH);
-    break;
-    default:
-    break;
   }
-  } else {
-    interruptCnt++;
-    if (interruptCnt == timeOff) {
+  else
+  {
+    if (interruptCnt >= timeOff)
+    {
+
       blinkerState = !blinkerState;
+
+      /*
+   The different colors available are coded as octal values, indicating which of the three LEDs are turned on.
+   Example:
+     0 = 000 => All three LEDs are off
+     1 = 001 => Only the blue LED is on
+     2 = 010 => Only the green LED is on
+     3 = 011 => Green and blue LEDs are on, resulting in aqua colored light
+     ...
+   */
+      switch (RGB_LEDCode)
+      {
+      case 0:
+        digitalWrite(ledRedPin, LOW);
+        digitalWrite(ledGreenPin, LOW);
+        digitalWrite(ledBluePin, LOW);
+        break;
+      case 1:
+        digitalWrite(ledRedPin, LOW);
+        digitalWrite(ledGreenPin, LOW);
+        digitalWrite(ledBluePin, HIGH);
+        break;
+      case 2:
+        digitalWrite(ledRedPin, LOW);
+        digitalWrite(ledGreenPin, HIGH);
+        digitalWrite(ledBluePin, LOW);
+        break;
+      case 3:
+        digitalWrite(ledRedPin, LOW);
+        digitalWrite(ledGreenPin, HIGH);
+        digitalWrite(ledBluePin, HIGH);
+        break;
+      case 4:
+        digitalWrite(ledRedPin, HIGH);
+        digitalWrite(ledGreenPin, LOW);
+        digitalWrite(ledBluePin, LOW);
+        break;
+      case 5:
+        digitalWrite(ledRedPin, HIGH);
+        digitalWrite(ledGreenPin, LOW);
+        digitalWrite(ledBluePin, HIGH);
+        break;
+      case 6:
+        digitalWrite(ledRedPin, HIGH);
+        digitalWrite(ledGreenPin, HIGH);
+        digitalWrite(ledBluePin, LOW);
+        break;
+      case 7:
+        digitalWrite(ledRedPin, HIGH);
+        digitalWrite(ledGreenPin, HIGH);
+        digitalWrite(ledBluePin, HIGH);
+        break;
+      default:
+        break;
+      }
+      
       interruptCnt = 0;
     }
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledBluePin, LOW);
   }
 }
 
@@ -219,14 +230,39 @@ void setup()
   
   Serial.println();
   Serial.println("### Temperature monitor with email alarm notification ###");
-  Serial.println("      Version 1.1");
+  Serial.println("                       Version 1.2");
+  Serial.println();
   Serial.println("Copyright 2022 Matteo Visintini");
+  Serial.println();
   Serial.println("This project is proudly open source, the software is distributed under the GNU General Public License");
+  Serial.println();
   Serial.println("Source code, license and documentation are availble at: https://github.com/mattVisi/server-temp-monitor");
-  delay(1000);
+  delay(4000);
 
-
+  #ifdef DEBUG
+  Serial.println();
+  Serial.println("###################################################################");
+  Serial.println("######### !!  CODE COMPILED IN DEBUG MODE  !! #####################");
+  Serial.println("######### !!  CODE COMPILED IN DEBUG MODE  !! #####################");
+  Serial.println("###################################################################");
+  Serial.println();
+  #endif
+  #ifdef NO_MAIL
+  Serial.println();
+  Serial.println("###################################################################");
+  Serial.println("######## !!  CODE COMPILED IN NO MAIL MODE  !! ####################");
+  Serial.println("############# !!  EMAILS WONT BE SENT  !! #########################");
+  Serial.println("###################################################################");
+  Serial.println();
+  #endif
   #ifdef CONFIG_ON_STARTUP
+  Serial.println();
+  Serial.println("###################################################################");
+  Serial.println("####### !!  CODE COMPILED IN CONFIG_ON_STARTUP MODE  !! ###########");
+  Serial.println("###### !!  ON STARTUP CONFIGURATION WILL BE OVERWRITTEN  !! #######");
+  Serial.println("###################################################################");
+  Serial.println();
+
   userSettings.begin("network");
   userSettings.putString("ssid", "your_ssid");
   userSettings.putString("isWpaEnterprise", "no");
@@ -256,10 +292,10 @@ void setup()
   #endif
   
   #ifdef DEBUG
-  printConfig(MODE_CLEAR_TEXT);
+  printConfig(MODE_CLEAR_TEXT);  // prints configuration leaving passwords in clear text
   #endif
   #ifndef DEBUG
-  printConfig(MODE_PASSWORD);
+  printConfig(MODE_PASSWORD);   // prints configuration covering passwords characters with asterisks
   #endif
 
   pinMode(ledBluePin, OUTPUT);
@@ -356,7 +392,7 @@ void setup()
 
 void loop()
 {
-  if (TimeDiff(lastMesurementTime, millis()) > mesurementInterval && status != "CONFIG")
+  if (TimeDiff(lastMesurementTime, millis()) > mesurementInterval && status != CONFIG)
   {
     Serial.print(millis());
     #ifdef DEBUG
@@ -368,39 +404,45 @@ void loop()
     if (getTemperature(tempC))
     {
       tempReadingErrotCnt++;
+      if (tempReadingErrotCnt >= 5) 
+      {
+        status = SENSOR_FAILURE;
+        timeOn = 50;
+        timeOff = 250;
+        RGB_LEDCode = 4;
+      }
       Serial.print(" - Failed temp");
     }
-    else if (status == "SENSOR_FAILURE")
+    else 
     {
-      status = "IDLE";
-      timeOn = 50;
-      timeOff = 950;
-      RGB_LEDCode = 2;
-      firstSensorAlarm = true;
-      tempReadingErrotCnt = 0;
-      Serial.print(" - Temperature: " + String(tempC));
+      if (status == SENSOR_FAILURE)
+      {
+        status = IDLE;
+        timeOn = 50;
+        timeOff = 950;
+        RGB_LEDCode = 2;
+        firstSensorAlarm = true;
+        tempReadingErrotCnt = 0;
+        Serial.print(" - Temperature: " + String(tempC));
+      }
+      else
+      {
+        tempReadingErrotCnt = 0;
+        Serial.print(" - Temperature: " + String(tempC));
+      }
     }
-    else
-    {
-      tempReadingErrotCnt = 0;
-      Serial.print(" - Temperature: " + String(tempC));
-    }
+    
     #ifdef DEBUG
     Serial.print(" | Fail count: " + String(tempReadingErrotCnt));
     #endif
     lastMesurementTime = millis();
-    if (tempReadingErrotCnt >= 5)
-      status = "SENSOR_FAILURE";
-      timeOn = 50;
-      timeOff = 250;
-      RGB_LEDCode = 4;
     // Finish getting tem & counting ev. errors
 
-    if ((status == "IDLE" || status == "PRE_ALARM") && (tempC >= preAlarmTemperature && tempC < alarmTemperature))
+    if ((status == IDLE || status == PRE_ALARM) && (tempC >= preAlarmTemperature && tempC < alarmTemperature))
     {
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
       {
-        status = "PRE_ALARM";
+        status = PRE_ALARM;
         timeOn = 50;
         timeOff = 950;
         RGB_LEDCode = 6;
@@ -409,12 +451,12 @@ void loop()
         lastAlarmEmailTime = millis();
       }
     }
-    else if ((status == "IDLE" || status == "PRE_ALARM" || status == "ALARM") && tempC >= alarmTemperature)
+    else if ((status == IDLE || status == PRE_ALARM || status == ALARM) && tempC >= alarmTemperature)
     {
+      status = ALARM;
       if (previousStatus != status) firstTempAlarm = true;
       if (firstTempAlarm || TimeDiff(lastAlarmEmailTime, millis()) > alarmEmailInterval)
       {
-        status = "ALARM";
         timeOn = 50;
         timeOff = 950;
         RGB_LEDCode = 4;
@@ -423,14 +465,22 @@ void loop()
         lastAlarmEmailTime = millis();
       }
     }
-    if ((status == "PRE_ALARM" || status == "ALARM") && tempC <= preAlarmTemperature - alarmResetThreshold)
+    if ((status == PRE_ALARM) && tempC <= preAlarmTemperature - alarmResetThreshold)
     {
-      status = "IDLE";
+      status = IDLE;
       timeOn = 50;
       timeOff = 950;
       RGB_LEDCode = 2;
       firstTempAlarm = true;
       sendEmail("ALARM_RESET");
+    } else if ((status == ALARM) && tempC <= alarmTemperature - alarmResetThreshold)
+    {
+      status = PRE_ALARM;
+      timeOn = 50;
+      timeOff = 950;
+      RGB_LEDCode = 2;
+      firstTempAlarm = true;
+      sendEmail("PRE_ALARM");
     }
 
     #ifdef DEBUG
@@ -439,8 +489,8 @@ void loop()
     Serial.print(" | Last failure time diff ");
     Serial.print(TimeDiff(lastFailureEmailTime, millis()));
     #endif
-    Serial.print(" | System status: " + status);
-    Serial.println(" | Previous system status: " + previousStatus);
+    Serial.print(" | System status: " + String(status));
+    Serial.println(" | Previous system status: " + String(previousStatus));
   }
 
   if(TimeDiff(lastImAliveEmail, millis()) > imAliveIntervall) {
@@ -448,7 +498,7 @@ void loop()
     sendEmail("IM_ALIVE");
   }
 
-  if (status == "SENSOR_FAILURE")
+  if (status == SENSOR_FAILURE)
   {
     if (firstSensorAlarm || TimeDiff(lastFailureEmailTime, millis()) > alarmEmailInterval)
     {
@@ -457,13 +507,15 @@ void loop()
       sendEmail("SENSOR_FAILURE");
     }
   }
-  else if (status == "CONFIG")
+  if (status == CONFIG)
   {
+    timeOn = 50;
+    timeOff = 950;
+    RGB_LEDCode = 1;
     serialConfiguration();
   }
 
-
-
+  // Check wether the system is still connected to the network
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println();
     Serial.println("ERROR: WiFi disconnected");
@@ -797,10 +849,6 @@ void serialConfiguration()
   float floatBuf;
   int intBuf;
   bool networkConfigChanged = false;
-
-  timeOn = 50;
-  timeOff = 950;
-  RGB_LEDCode = 1;
 
   while(true) {
   Serial.println("\n\n ---- CONFIGURATION ---- ");
