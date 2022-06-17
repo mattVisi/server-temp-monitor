@@ -1,5 +1,13 @@
 site_name: server-temp-monitor
-site_url: https://github.com/mattVisi/server-temp-monitor
+site_url: https://mattVisi.github.io/server-temp-monitor/
+
+repo_url: https://github.com/mattVisi/server-temp-monitor/
+edit_uri: edit/main/docs/docs/
+
+site_description: Un sistema di controllo della temperatura ambientale altamente configurabile.
+
+site_author: Matteo Visintini
+copyright: © 2022, Matteo Visintini
 
 nav:
   - Home: index.md
