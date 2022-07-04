@@ -628,7 +628,7 @@ void printConfig(int mode) {
     Serial.println();
   Serial.println("    Author name - " + userSettings.getString("author_name"));
   Serial.println("    Email recipient - " + userSettings.getString("recipient_1"));
-  Serial.println("    Time intervall beetween ""I'm Alive"" email - " + String(userSettings.getInt("imAlive_intrvl"))+" minutes");
+  Serial.println("    Time intervall beetween ""I'm Alive"" email - " + String(userSettings.getInt("imAlive_intrvl"))+" hours");
   userSettings.end();
   Serial.println();
 }
