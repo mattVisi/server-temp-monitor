@@ -103,7 +103,7 @@ Se si risponde `yes` il sistema invia una email di prova con le impostazioni app
 
 ---
  NOTA: Se ci sono state delle modifiche alla configurazione di rete, il sistema non può inviare una email di prova, perchè la connessione alla rete WiFi avviene soltanto all'avvio.  
- In tal caso puoi concludere la configurazione, ritornare qua dopo che il sistema si sarà riavviato senza modificare ulteriormente la configurazione di rete e inviare quindi l'email di prova
+ In tal caso puoi concludere la configurazione, ritornare qua dopo che il sistema si sarà riavviato senza modificare ulteriormente la configurazione di rete e inviare quindi l'email di prova.
 
 ---
 
